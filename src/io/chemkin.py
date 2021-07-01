@@ -1,0 +1,1 @@
+"""Module to parse the CHEMKIN input file format to a reaction graph"""
