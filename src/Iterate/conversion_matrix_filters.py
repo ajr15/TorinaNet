@@ -37,3 +37,15 @@ class OnlySingleBonds (ConvFilter):
             return True
         else:
             return False
+
+class _TwoSpecieMatrix (ConvFilter):
+    """Filter to make sure that only reactions between 2 species are created (to be used internaly only)"""
+
+    def __init__(self, max_l):
+        self.max_l = max_l
+    
+    def check(self, matrix: np.array):
+        if np.sum(matrix[:self.max_l, self.max_l:]) > 0:
+            return True
+        else:
+            return False

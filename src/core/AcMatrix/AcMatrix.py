@@ -41,6 +41,11 @@ class AcMatrix (ABC):
         """Abastract method to create AC matrix from a Specie"""
         raise NotImplementedError
 
+    @abstractclassmethod
+    def to_specie(self):
+        """Abastract method to convert an AC matrix to a Specie"""
+        raise NotImplementedError
+
     def get_compoenents(self):
         """Method to decompose an AC matrix to its components"""
         G = self.to_networkx_graph()

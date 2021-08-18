@@ -1,15 +1,15 @@
+from networkx.algorithms.assortativity.correlation import numeric_assortativity_coefficient
+from networkx.algorithms.planarity import check_planarity
 import numpy as np
-from itertools import combinations
-from numba import njit
-from numba.typed import List
+from copy import deepcopy
+from itertools import product
 
-from ..utils.TimeFunc import TimeFunc
+from ..utils.TimeFunc import TimeFunc, show_time_data, time
 from ..core.RxnGraph import RxnGraph
 from ..core.Reaction import Reaction
 from ..core.Specie import Specie
 from ..core.AcMatrix.BinaryAcMatrix import BinaryAcMatrix
 from .conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds, _TwoSpecieMatrix
-from . import _jitted_commons as _jitted
 
 class Iterator:
     """Object for handling all the elementary reaction iteration"""
@@ -27,28 +27,44 @@ class Iterator:
         else:
             m = np.block([[ac_matrix1.matrix, np.zeros((l1, l2))], [np.zeros((l2, l1)), ac_matrix2.matrix]])
         return self._ac_type(m)
-    
-    @staticmethod
-    @TimeFunc
-    def generate_single_bond_conversion_matrices(ac, conversion_filters, only_single_bonds):
-        """Method to generate all single bond conversion matrices for a given ac matrix"""
-        print("I")
-        matrices = _jitted._generate_single_conversion_matrices_without_filter(ac, only_single_bonds)
-        print("AM")
-        # applying criteria
-        criteria = _jitted._apply_filters_on_matrices(matrices, conversion_filters)
-        print("WORKING")
-        # filtering by criteria
-        return _jitted._filter_by_boolian(criteria, matrices)
 
     @staticmethod
-    @TimeFunc
+    def generate_single_bond_conversion_matrices(ac, conversion_filters, max_changing_bonds, only_single_bonds):
+        """Method to generate all single bond conversion matrices for a given ac matrix"""
+        #TODO: WRITE WITH FIXED ARRAY SIZES !!!!!
+        # get all possible conv matrices (single bond change)
+        conv_matrices = []
+        for i in range(len(ac)):
+            for j in range(i + 1, len(ac)):
+                if ac.matrix[i][j] == 0: # makes sure there are no negative bond orders
+                    mat = np.zeros((len(ac), len(ac)))
+                    mat[i][j] = 1
+                    mat[j][i] = 1
+                    if all([c.check(mat) for c in conversion_filters]):
+                        conv_matrices.append(mat)
+                else: # makes sure only single bonds are created
+                    mat = np.zeros((len(ac), len(ac)))
+                    mat[i][j] = -1
+                    mat[j][i] = -1
+                    if all([c.check(mat) for c in conversion_filters]):
+                        conv_matrices.append(mat)
+                    if not only_single_bonds:
+                        mat = np.zeros((len(ac), len(ac)))
+                        mat[i][j] = 1
+                        mat[j][i] = 1
+                        if all([c.check(mat) for c in conversion_filters]):
+                            conv_matrices.append(mat)
+        return conv_matrices
+
+
+    @staticmethod
     def gen_unique_idx_combinations_for_conv_mats(n_single_conv_mats, max_changing_bonds):
-        combos = [np.array([i] + [0 for _ in range(max_changing_bonds - 1)]) for i in range(n_single_conv_mats)]
+        _idxs = [[i] for i in range(n_single_conv_mats)]
+        combos = [] + _idxs
         for n in range(2, max_changing_bonds + 1):
-            for c in combinations([j for j in range(n_single_conv_mats)], n):
-                combos = combos + [np.array(list(c) + [0 for _ in range(max_changing_bonds - n)])]
-        return np.array(combos)
+            for c in product(*[range(n_single_conv_mats) for itr in range(n)]):
+                combos += [list(c)]
+        return combos
 
     @classmethod
     @TimeFunc
@@ -66,24 +82,16 @@ class Iterator:
             # allow only single bonds?
             if isinstance(x, OnlySingleBonds):
                 only_single_bonds = True
-        # JITing conversion matrix filters
-        jitted_conversion_filters = _jitted.jit_conversion_filters(conversion_filters)
-        print("conv filters", jitted_conversion_filters, len(jitted_conversion_filters))
-        # generating conversion matrices
-        print(0)
-        conv_matrices = cls.generate_single_bond_conversion_matrices(ac.matrix, jitted_conversion_filters, only_single_bonds)
-        print(1)
+        conv_matrices = cls.generate_single_bond_conversion_matrices(ac, conversion_filters, max_changing_bonds, only_single_bonds)
         n_conv_matrices = len(conv_matrices) # number of single bond transformations, used to add unique matrices in iteration step
         # iterate on conv_matrices (single bond changes) to get multi-bond change conversion matrices
-        print(2)
-        multi_matrices = _jitted._make_multibond_conv_matrices(cls.gen_unique_idx_combinations_for_conv_mats(n_conv_matrices, max_changing_bonds), conv_matrices)
-        print(3)
-        # making jitted versions of criteria
-        # applying criteria
-        criteria = _jitted._apply_filters_on_matrices(multi_matrices, jitted_conversion_filters)
-        # filtering by criteria
-        multi_matrices = _jitted._filter_by_boolian(criteria, multi_matrices)
-        return np.concatenate((conv_matrices, multi_matrices))
+        for idxs in cls.gen_unique_idx_combinations_for_conv_mats(n_conv_matrices, max_changing_bonds):
+            mat = np.zeros((len(ac), len(ac)))
+            for i in idxs:
+                mat = mat + conv_matrices[i]
+            if all([c.check(mat) for c in conversion_filters]):
+                conv_matrices.append(mat)
+        return conv_matrices
 
     @TimeFunc
     def iterate_over_species(self, specie1, specie2, ac_filters, conversion_filters):
@@ -107,10 +115,16 @@ class Iterator:
         _specie2.identifier = specie2.identifier
         rxn_graph.add_specie(_specie2)
         # apply all conversion matrices
-        for new_ac in _jitted._create_ac_matrices(joint_ac.matrix, cmats, ac_filters):
-            rxn_graph.add_reaction(Reaction.from_ac_matrices(joint_ac, self._ac_type(new_ac))) # adding rxn to graph makes sure its and its species are unique, 
-                                                                                # no need to check here as well
-                                                                                # TODO: properly separate reaction cases!
+        for cmat in cmats:
+            # get new ac matrix
+            new_ac = joint_ac.matrix + cmat
+            new_ac = self._ac_type(new_ac.copy())
+            # apply filters on ac matrix 
+            if all([f(new_ac) for f in ac_filters]):
+                # decompose ac matrix to components
+                rxn_graph.add_reaction(Reaction.from_ac_matrices(joint_ac, new_ac)) # adding rxn to graph makes sure its and its species are unique, 
+                                                                                    # no need to check here as well
+                                                                                    # TODO: properly separate reaction cases!
         return rxn_graph
 
     @TimeFunc
@@ -126,11 +140,16 @@ class Iterator:
         _specie.identifier = specie.identifier
         rxn_graph.add_specie(_specie)
         # apply all conversion matrices
-        for new_ac in _jitted._create_ac_matrices(origin_ac.matrix, cmats, ac_filters):
-            # decompose ac matrix to components
-            rxn_graph.add_reaction(Reaction.from_ac_matrices(origin_ac, self._ac_type(new_ac))) # adding rxn to graph makes sure its and its species are unique, 
-                                                                                 # as well as separating different reaction cases
-                                                                                 # no need to check here as well!
+        for cmat in cmats:
+            # get new ac matrix
+            new_ac = origin_ac.matrix + cmat
+            new_ac = self._ac_type(new_ac.copy())
+            # apply filters on ac matrix 
+            if all([f(new_ac) for f in ac_filters]):
+                # decompose ac matrix to components
+                rxn_graph.add_reaction(Reaction.from_ac_matrices(origin_ac, new_ac)) # adding rxn to graph makes sure its and its species are unique, 
+                                                                                     # as well as separating different reaction cases
+                                                                                     # no need to check here as well!
         return rxn_graph
 
     def gererate_rxn_network(self, reactants: list, max_itr, ac_filters=[], conversion_filters=[]):
@@ -140,8 +159,6 @@ class Iterator:
         for s in reactants:
             rxn_graph.add_specie(Specie.from_ac_matrix(self._ac_type.from_specie(s))) # properly add first specie to graph
         nspecies = rxn_graph.species
-        # jitting ac_filters and conversion filters
-        ac_filters = _jitted.jit_ac_filters(ac_filters)
         # iterate reactions of species
         counter = 1
         while True:
@@ -150,13 +167,11 @@ class Iterator:
             print("*" * 10 + "  counter {}   ".format(counter) + "*" * 10)
             for s in nspecies:
                 nseed.join(self.iterate_over_a_specie(s, ac_filters, conversion_filters))
-            print("iterate_over_a_specie is ok")
             # add all bimolecular reactions
             # new species and old species
             for i in range(len(nspecies)):
                 for j in range(len(rxn_graph.species)): 
                     nseed.join(self.iterate_over_species(nspecies[i], rxn_graph.species[j], ac_filters, conversion_filters))
-            print("iterate_over_species is ok")
             # new species and new species
             for i in range(len(nspecies)):
                 for j in range(1, len(nspecies)): 

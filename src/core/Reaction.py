@@ -25,6 +25,15 @@ class Reaction:
         ajr.products = [Specie.from_ac_matrix(ac) for ac in products_acs]
         return ajr
 
+    def _get_id_str(self):
+        s = ''
+        for k in ['r_ac_det', 'p_ac_det', 'r_num', 'p_num']:
+            if k in self.properties.keys():
+                s += "_" + k + "_" + str(self.properties[k])
+            else:
+                s += k + "_NONE"
+        return s
+
     def __eq__(self, x):
         # if not equal check properties
         conditions = []

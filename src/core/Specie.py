@@ -1,5 +1,5 @@
 import numpy as np
-from rdkit import Chem
+import openbabel as ob
 
 class Specie:
     """Core object to hold information and methods on a single specie"""
@@ -11,7 +11,11 @@ class Specie:
 
     def parse_identifier(self):
         """Abstract static method to parse the identifier to a Specie object"""
-        return Chem.MolFromSmiles(self.identifier, sanitize=True)
+        conv = ob.OBConversion()
+        conv.SetInFormat("smi")
+        mol = ob.OBMol()
+        conv.ReadString(mol, self.identifier)
+        return mol
 
     @staticmethod
     def from_ac_matrix(ac):
@@ -22,6 +26,15 @@ class Specie:
         s.properties['number_of_atoms'] = len(ac.matrix)
         # saves matrix as an attribute
         s.ac_matrix = ac
+        return s
+
+    def _get_id_str(self):
+        s = ''
+        for k in ['determinant', 'number_of_atoms']:
+            if k in self.properties.keys():
+                s += "_" + k + "_" + str(self.properties[k])
+            else:
+                s += k + "_NONE"
         return s
 
     def __eq__(self, x):

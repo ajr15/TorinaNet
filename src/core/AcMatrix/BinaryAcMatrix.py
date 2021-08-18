@@ -1,6 +1,6 @@
 from .AcMatrix import AcMatrix
-from rdkit.Chem.rdchem import Atom
-from rdkit.Chem.rdmolops import AddHs
+from ..Specie import Specie
+import openbabel as ob
 import networkx as nx
 import numpy as np
 
@@ -53,19 +53,43 @@ class BinaryAcMatrix (AcMatrix):
     def from_specie(specie, add_hydrogens=True):
         """Abastract method to create AC matrix from a Specie"""
         if specie.ac_matrix is None:
-            rdmol = specie.parse_identifier()
+            obmol = specie.parse_identifier()
             if add_hydrogens:
-                rdmol = AddHs(rdmol)
-            ac = np.zeros((rdmol.GetNumAtoms(), rdmol.GetNumAtoms()))
+                rdmol = obmol.AddHydrogens()
+            ac = np.zeros((obmol.NumAtoms(), obmol.NumAtoms()))
             # writing off diagonal values - bond orders between atoms
-            for bond in rdmol.GetBonds():
+            for i in range(obmol.NumBonds()):
+                bond = obmol.GetBond(i)
                 i = bond.GetBeginAtomIdx()
                 j = bond.GetEndAtomIdx()
                 ac[i, j] = 1
                 ac[j, i] = 1
             # writing diagonal values - atom numbers
-            for i in range(rdmol.GetNumAtoms()):
-                ac[i, i] = rdmol.GetAtomWithIdx(i).GetAtomicNum()
+            for i in range(rdmol.NumAtoms()):
+                ac[i, i] = rdmol.GetAtom(i).GetAtomicNum()
             return BinaryAcMatrix(ac)
         else:
             return BinaryAcMatrix(specie.ac_matrix.matrix)
+
+    def to_specie(self):
+        # using OpenBabel because of bond order perception method
+        mol = ob.OBMol()
+        # adding atoms
+        for i in range(len(self.matrix)):
+            atom = ob.OBAtom()
+            atom.SetAtomicNum(self.get_atom(i))
+            mol.AddAtom(atom)
+        # adding bonds
+        for i in range(len(self.matrix)):
+            for j in range(i + 1, len(self.matrix)):
+                mol.AddBond(i, j, 1)
+        # perceiving "correct" bond orders
+        mol.PercieveBondOrder()
+        # getting SMILES string
+        conv = ob.OBConversion()
+        conv.SetOutFormat("smi")
+        smiles = conv.WriteString(mol)
+        # creating specie
+        specie = Specie.from_ac_matrix(self)
+        specie.identifier = smiles
+        return specie

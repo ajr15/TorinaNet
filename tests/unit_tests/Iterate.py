@@ -3,6 +3,7 @@ import networkx as nx
 from matplotlib import pyplot as plt
 import numpy as np
 
+from src.utils.TimeFunc import show_time_data
 from src.Iterate.Iterator import Iterator
 from src.Iterate.ac_matrix_filters import max_bonds_per_atom
 from src.Iterate.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
@@ -99,6 +100,7 @@ def gererate_rxn_network_test(specie_smiles):
     iterator = Iterator()
 
     rxn_graph = iterator.gererate_rxn_network(reactants, max_itr, ac_filters, conversion_filters)
+    show_time_data()
     # rxn_graph = iterator.iterate_over_a_specie(reactants[0], ac_filters, conversion_filters)
     for r in rxn_graph.reactions:
         # print(r.properties)
@@ -106,9 +108,11 @@ def gererate_rxn_network_test(specie_smiles):
         # print(r.products)
     print("number of species", len(rxn_graph.species))
     print("number of reactions", len(rxn_graph.reactions))
-    G = rxn_graph.to_netwokx_graph()
-    visualize_rxn_graph(G)
-    plt.show()
+    # G = rxn_graph.to_netwokx_graph()
+    # visualize_rxn_graph(G)
+    # plt.savefig("./rxn_graph.png")
+    # print("Saved reaction graph plot in ./rxn_graph.png")
+    # print("FINISHED !")
 
 def main():
     # pre_g = iterate_over_a_specie_test("C#N")
@@ -117,7 +121,7 @@ def main():
     #     print(s.ac_matrix.matrix)
     # print("n reactions in pre:", len(pre_g.reactions))
     # print("n species in pre:", len(pre_g.species))
-    gererate_rxn_network_test("[C+]=O")
+    gererate_rxn_network_test("C#N")
 
 if __name__ == '__main__':
     main()
