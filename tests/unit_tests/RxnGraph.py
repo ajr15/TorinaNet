@@ -1,12 +1,13 @@
 import sys; sys.path.append("../..")
 import numpy as np
 from matplotlib import pyplot as plt
+import networkx as nx
 from src.core.RxnGraph import RxnGraph
 from src.core.Specie import Specie
 from src.core.Reaction import Reaction
 from src.core.AcMatrix.BinaryAcMatrix import BinaryAcMatrix
 
-from src.Iterate.Iterator import Iterator
+from src.Iterate.daskIterator import Iterator
 from src.Iterate.ac_matrix_filters import max_bonds_per_atom
 from src.Iterate.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
 from Iterate import visualize_rxn_graph
@@ -79,7 +80,7 @@ def compare_species_test():
 def iterate_over_a_smiles(specie_smiles):
     # reactants: list, max_itr, ac_filters=[], conversion_filters=[])
     reactants = [Specie(specie_smiles)]
-    max_itr = 2
+    max_itr = 1
     ac_filters = [max_bonds_per_atom]
     conversion_filters = [MaxChangingBonds(4), OnlySingleBonds()]
     iterator = Iterator()
@@ -148,5 +149,99 @@ def join_empty_test():
     visualize_rxn_graph(g1.to_netwokx_graph())
     plt.show()
 
+def generate_rxn_network_test(specie_smiles):
+    reactants = [Specie(specie_smiles)]
+    max_itr = 2
+    ac_filters = [max_bonds_per_atom]
+    conversion_filters = [MaxChangingBonds(2), OnlySingleBonds()]
+    iterator = Iterator()
+
+    rxn_graph = iterator.gererate_rxn_network(reactants, max_itr, ac_filters, conversion_filters)
+    return rxn_graph
+
+
+def save_graph_test():
+    rxn_graph = generate_rxn_network_test("C#N")
+    print("no. of species (before) =", len(rxn_graph.species))
+    smiles_set = set()
+    for s in rxn_graph.species:
+        smiles = s.ac_matrix.to_specie().identifier
+        print("=" * 30)
+        print(s.ac_matrix.matrix)
+        print(smiles)
+        if not smiles in smiles_set:
+            smiles_set.add(smiles)
+        else:
+            print("DOUBLE !")
+            
+    rxn_graph.save_to_file("./rxn_graph.dat")
+
+    print("no. of species (after) =", len(rxn_graph.species))
+
+def make_text_pos(pos, xshift, yshift):
+    for k, v in pos.items():
+        pos[k] = v - np.array([xshift, yshift])
+    return pos
+
+
+def plot_rxn_graph(G: RxnGraph, keep_ids, reactant_ids):
+    colormap = []
+    sizemap = []
+    g = G.to_netwokx_graph(use_internal_id=False)
+    for node in G.to_netwokx_graph(use_internal_id=True):
+        # blue nodes = reactant nodes
+        # green nodes = specie nodes (not deleted)
+        # black nodes = reaction nodes (not deleted)
+        # red nodes (small) = deleted reaction nodes
+        # red nodes (large) = deleted specie nodes
+        if node in reactant_ids:
+            colormap.append("blue")
+            sizemap.append(100)
+        elif node in keep_ids:
+            if node in G._specie_ids:
+                colormap.append("green")
+                sizemap.append(100)
+            else:
+                colormap.append("black")
+                sizemap.append(50)
+        else:
+            if node in G._specie_ids:
+                colormap.append("red")
+                sizemap.append(100)
+            else:
+                colormap.append("red")
+                sizemap.append(30)
+    plt.figure(figsize=(20, 20))
+    pos = nx.spring_layout(g, k=1)
+    nx.draw_networkx_nodes(g, pos=pos, node_size=sizemap, node_color=colormap)
+    nx.draw_networkx_edges(g, pos=pos, alpha=0.04)
+    nx.draw_networkx_labels(g, pos=make_text_pos(pos, 0, 0.06), font_color='k')
+
+
+def remove_test():
+    specie = BinaryAcMatrix.from_specie(Specie("[OH]")).to_specie()
+    rxn_graph = generate_rxn_network_test("O")
+    ids = rxn_graph._dfs_remove_id_str(rxn_graph.to_netwokx_graph(use_internal_id=True), specie._get_id_str(), rxn_graph.reactant_species)
+    ids = ids.union(specie._get_id_str())
+    plot_rxn_graph(rxn_graph, ids, [s._get_id_str() for s in rxn_graph.reactant_species])
+    print("no. of species (before) =", len(rxn_graph.species))
+    print("no. of reactions (before) =", len(rxn_graph.reactions))
+    res_rxn_strings = [" + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.reactants]) + 
+            " -> " + 
+            " + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.products])
+            for reaction in rxn_graph.reactions]
+    print("\n".join(res_rxn_strings))
+
+    rxn_graph = rxn_graph.remove_specie(specie)
+    print("no. of species (after) =", len(rxn_graph.species))
+    print("no. of reactions (after) =", len(rxn_graph.reactions))
+    res_rxn_strings = [" + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.reactants]) + 
+                " -> " + 
+                " + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.products])
+                for reaction in rxn_graph.reactions]
+    print("\n".join(res_rxn_strings))
+
+    plt.show()
+
 if __name__ == '__main__':
-    compare_species_test()
+    remove_test()

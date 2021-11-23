@@ -22,7 +22,7 @@ class Specie:
         """Method to read a Specie from an AC matrix"""
         s = Specie(None, {})
         # calculates important (and quick) properties of matrix
-        s.properties['determinant'] = np.linalg.det(ac.matrix)
+        s.properties['determinant'] = round(np.linalg.det(ac.matrix))
         s.properties['number_of_atoms'] = len(ac.matrix)
         # saves matrix as an attribute
         s.ac_matrix = ac

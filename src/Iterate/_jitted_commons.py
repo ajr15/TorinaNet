@@ -19,7 +19,7 @@ def jit_conversion_filters(filters):
             jitted.append(only_single_bonds)
         elif isinstance(f, _TwoSpecieMatrix):
             l = f.max_l
-            fi = lambda mat: True if np.sum(mat[:l, l:]) > 0 else False
+            fi = lambda mat: np.sum(mat[:l, l:]) > 0
             jitted.append(njit() (fi))
         elif isinstance(f, MaxChangingBonds):
             continue
@@ -91,23 +91,18 @@ def _apply_single_filter(bool_range, matrices, f):
 
 def _apply_filters_on_matrices(matrices, filters):
     bool_range = np.ones(len(matrices), dtype=np.bool8)
-    print(filters, len(filters))
     for f in filters:
-        print("HI")
         bool_range = _apply_single_filter(bool_range, matrices, f)
-    print("DONE")
     return bool_range
 
 @njit
 def _filter_by_boolian(bool_range, target):
-    print("NO")
     filtered = np.zeros((np.sum(bool_range), *target.shape[1:]), dtype=np.int8)
     idx = 0
     for b, t in zip(bool_range, target):
         if b:
             filtered[idx] = t
             idx += 1
-    print("YES")
     return filtered
 
 @njit()

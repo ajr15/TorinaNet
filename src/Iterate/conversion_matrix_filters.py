@@ -33,10 +33,11 @@ class OnlySingleBonds (ConvFilter):
         pass
 
     def check(self, matrix: np.array):
-        if all([not x > 1 and not x < -1 for v in matrix for x in v]):
-            return True
-        else:
-            return False
+        # if all([not x > 1 and not x < -1 for v in matrix for x in v]):
+        #     return True
+        # else:
+        #     return False
+        return True
 
 class _TwoSpecieMatrix (ConvFilter):
     """Filter to make sure that only reactions between 2 species are created (to be used internaly only)"""

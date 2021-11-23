@@ -2,9 +2,11 @@ from networkx.algorithms.assortativity.correlation import numeric_assortativity_
 from networkx.algorithms.planarity import check_planarity
 import numpy as np
 from copy import deepcopy
-from itertools import product
+from itertools import combinations
+import dask as da
+from dask.diagnostics import ProgressBar
 
-from ..utils.TimeFunc import TimeFunc, show_time_data, time
+from ..utils.TimeFunc import TimeFunc
 from ..core.RxnGraph import RxnGraph
 from ..core.Reaction import Reaction
 from ..core.Specie import Specie
@@ -62,7 +64,7 @@ class Iterator:
         _idxs = [[i] for i in range(n_single_conv_mats)]
         combos = [] + _idxs
         for n in range(2, max_changing_bonds + 1):
-            for c in product(*[range(n_single_conv_mats) for itr in range(n)]):
+            for c in combinations(range(n_single_conv_mats), n):
                 combos += [list(c)]
         return combos
 
@@ -93,6 +95,7 @@ class Iterator:
                 conv_matrices.append(mat)
         return conv_matrices
 
+    @da.delayed(pure=False)
     @TimeFunc
     def iterate_over_species(self, specie1, specie2, ac_filters, conversion_filters):
         """iterate over all possible reactions for 2 species"""
@@ -127,6 +130,7 @@ class Iterator:
                                                                                     # TODO: properly separate reaction cases!
         return rxn_graph
 
+    @da.delayed(pure=False)
     @TimeFunc
     def iterate_over_a_specie(self, specie, ac_filters, conversion_filters):
         """iterate over all possible reactions for 2 species"""
@@ -152,35 +156,75 @@ class Iterator:
                                                                                      # no need to check here as well!
         return rxn_graph
 
-    def gererate_rxn_network(self, reactants: list, max_itr, ac_filters=[], conversion_filters=[]):
+    def gererate_rxn_network(self, reactants: list, max_itr, ac_filters=[], conversion_filters=[], verbose=1):
         """Function to iterate all possible elemetary reactions with given reactants"""
         # init
         rxn_graph = RxnGraph()
+        reactant_species = []
         for s in reactants:
-            rxn_graph.add_specie(Specie.from_ac_matrix(self._ac_type.from_specie(s))) # properly add first specie to graph
+            specie = Specie.from_ac_matrix(self._ac_type.from_specie(s))
+            rxn_graph.add_specie(specie) # properly add first specie to graph
+            reactant_species.append(specie)
+        rxn_graph.set_reactant_species(reactant_species)
         nspecies = rxn_graph.species
         # iterate reactions of species
         counter = 1
         while True:
             nseed = RxnGraph()
             # add all unimolecular reactions
-            print("*" * 10 + "  counter {}   ".format(counter) + "*" * 10)
+            if verbose > 0:
+                print("=" * 30)
+                print(" " * 9 + "Iteration {}".format(counter))
+                print("=" * 30)
+                print("\nIterating over single specie reactions...")
+            ajr = []
             for s in nspecies:
-                nseed.join(self.iterate_over_a_specie(s, ac_filters, conversion_filters))
+                ajr.append(self.iterate_over_a_specie(s, ac_filters, conversion_filters))
+            if verbose > 0:
+                with ProgressBar():
+                    ajr = da.compute(ajr, scheduler="processes")[0]
+                print("\nIterating over 2 specie reactions...")
+            else:
+                ajr = da.compute(ajr, scheduler="processes")[0]
+            for ajr_rxn_graph in ajr:
+                nseed.join(ajr_rxn_graph)
             # add all bimolecular reactions
             # new species and old species
+            ajr = []
             for i in range(len(nspecies)):
                 for j in range(len(rxn_graph.species)): 
-                    nseed.join(self.iterate_over_species(nspecies[i], rxn_graph.species[j], ac_filters, conversion_filters))
+                    ajr.append(self.iterate_over_species(nspecies[i], rxn_graph.species[j], ac_filters, conversion_filters))
+            if verbose > 0:
+                with ProgressBar():
+                    ajr = da.compute(ajr, scheduler="processes")[0]
+            else:
+                ajr = da.compute(ajr, scheduler="processes")[0]
+            for ajr_rxn_graph in ajr:
+                nseed.join(ajr_rxn_graph)
             # new species and new species
+            ajr = []
             for i in range(len(nspecies)):
-                for j in range(1, len(nspecies)): 
-                    nseed.join(self.iterate_over_species(nspecies[i], nspecies[j], ac_filters, conversion_filters))
+                for j in range(i, len(nspecies)): 
+                    ajr.append(self.iterate_over_species(nspecies[i], nspecies[j], ac_filters, conversion_filters))
+            if verbose > 0:
+                with ProgressBar():
+                    ajr = da.compute(ajr, scheduler="processes")[0]
+            else:
+                ajr = da.compute(ajr, scheduler="processes")[0]
+            for ajr_rxn_graph in ajr:
+                nseed.join(ajr_rxn_graph)
+            if verbose > 0:
+                print("DONE ITERATING REACTIONS IN THIS ITERATION SUCCESSFULLY")
             # get new species
             nspecies = nseed.compare_species(rxn_graph)
             # update rxn_graph
             rxn_graph.join(nseed)
             # check stop condition
             if max_itr <= counter: # TODO: implement proper stop condition!
+                if verbose > 0:
+                    print("Stopping condition met!")
+                    print("Finished reaction iteration successfully")
                 return rxn_graph
+            if verbose > 0:
+                print("Stopping condition is not met, continueing...")
             counter += 1

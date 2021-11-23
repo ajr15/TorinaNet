@@ -15,8 +15,8 @@ class Reaction:
     @staticmethod
     def from_ac_matrices(reactants, products):
         ajr = Reaction(None, None, {}) # must instanciate with explicit values (unclear why, probably some memory managment bug)
-        ajr.properties['r_ac_det'] = np.linalg.det(reactants.matrix)
-        ajr.properties['p_ac_det'] = np.linalg.det(products.matrix)
+        ajr.properties['r_ac_det'] = round(np.linalg.det(reactants.matrix))
+        ajr.properties['p_ac_det'] = round(np.linalg.det(products.matrix))
         reactants_acs = reactants.get_compoenents()
         ajr.properties['r_num'] = len(reactants_acs)
         ajr.reactants = [Specie.from_ac_matrix(ac) for ac in reactants_acs]

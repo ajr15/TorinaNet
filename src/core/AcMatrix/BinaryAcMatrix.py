@@ -33,7 +33,7 @@ class BinaryAcMatrix (AcMatrix):
             G.add_node(i, Z=z)
         for i in range(len(self.matrix)):
             for j in range(i + 1, len(self.matrix)):
-                if self.matrix[i][j] ==1:
+                if self.matrix[i][j] == 1:
                     G.add_edge(i, j)
         return G
 
@@ -55,18 +55,18 @@ class BinaryAcMatrix (AcMatrix):
         if specie.ac_matrix is None:
             obmol = specie.parse_identifier()
             if add_hydrogens:
-                rdmol = obmol.AddHydrogens()
+                obmol.AddHydrogens()
             ac = np.zeros((obmol.NumAtoms(), obmol.NumAtoms()))
             # writing off diagonal values - bond orders between atoms
             for i in range(obmol.NumBonds()):
                 bond = obmol.GetBond(i)
-                i = bond.GetBeginAtomIdx()
-                j = bond.GetEndAtomIdx()
+                i = bond.GetBeginAtomIdx() - 1
+                j = bond.GetEndAtomIdx() - 1
                 ac[i, j] = 1
                 ac[j, i] = 1
             # writing diagonal values - atom numbers
-            for i in range(rdmol.NumAtoms()):
-                ac[i, i] = rdmol.GetAtom(i).GetAtomicNum()
+            for i in range(obmol.NumAtoms()):
+                ac[i, i] = obmol.GetAtom(i + 1).GetAtomicNum()
             return BinaryAcMatrix(ac)
         else:
             return BinaryAcMatrix(specie.ac_matrix.matrix)
@@ -77,14 +77,15 @@ class BinaryAcMatrix (AcMatrix):
         # adding atoms
         for i in range(len(self.matrix)):
             atom = ob.OBAtom()
-            atom.SetAtomicNum(self.get_atom(i))
+            atom.SetAtomicNum(int(self.get_atom(i)))
             mol.AddAtom(atom)
         # adding bonds
         for i in range(len(self.matrix)):
             for j in range(i + 1, len(self.matrix)):
-                mol.AddBond(i, j, 1)
+                if self.matrix[i][j] == 1:
+                    mol.AddBond(i + 1, j + 1, 1)
         # perceiving "correct" bond orders
-        mol.PercieveBondOrder()
+        mol.PerceiveBondOrders()
         # getting SMILES string
         conv = ob.OBConversion()
         conv.SetOutFormat("smi")

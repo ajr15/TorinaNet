@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 from src.utils.TimeFunc import show_time_data
-from src.Iterate.Iterator import Iterator
+from src.Iterate.daskIterator import Iterator
 from src.Iterate.ac_matrix_filters import max_bonds_per_atom
 from src.Iterate.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
 from src.core.Specie import Specie
@@ -79,49 +79,43 @@ def iterate_over_species_test(specie_smiles1, specie_smiles2):
     ac_filters = [max_bonds_per_atom]
     conversion_filters = [MaxChangingBonds(4), OnlySingleBonds()]
     iterator = Iterator()
-    # specie1, specie2, ac_filters, conversion_filters
     rxn_graph = iterator.iterate_over_species(reactant1, reactant2, ac_filters, conversion_filters)
-    # print(rxn_graph.species[1].ac_matrix.matrix)
-    for r in rxn_graph.reactions:
-        # print(r.properties)
-        print(r.properties['r_num'], [s.identifier for s in r.reactants], r.properties['p_num'], [s.identifier for s in r.products])
-        # print(r.products)
-    # G = rxn_graph.to_netwokx_graph()
-    # visualize_rxn_graph(G)
-    # plt.show()
     return rxn_graph
 
-def gererate_rxn_network_test(specie_smiles):
-    # reactants: list, max_itr, ac_filters=[], conversion_filters=[])
-    reactants = [Specie(specie_smiles)]
+def iterate_module_standard_test():
+    """Standard test for the iterate module. DO NOT CHANGE !"""
+    print("Running standard test for the Iterate module.")
+    print("Calculating combinatoric network of H2O molecule dissociation.")
+    print("Enumerating...")
+    # making the test graph
+    reactants = [Specie("O")]
     max_itr = 2
     ac_filters = [max_bonds_per_atom]
     conversion_filters = [MaxChangingBonds(2), OnlySingleBonds()]
     iterator = Iterator()
-
-    rxn_graph = iterator.gererate_rxn_network(reactants, max_itr, ac_filters, conversion_filters)
-    show_time_data()
-    # rxn_graph = iterator.iterate_over_a_specie(reactants[0], ac_filters, conversion_filters)
-    for r in rxn_graph.reactions:
-        # print(r.properties)
-        print(r.properties['r_num'], [s.identifier for s in r.reactants], r.properties['p_num'], [s.identifier for s in r.products])
-        # print(r.products)
-    print("number of species", len(rxn_graph.species))
-    print("number of reactions", len(rxn_graph.reactions))
-    # G = rxn_graph.to_netwokx_graph()
-    # visualize_rxn_graph(G)
-    # plt.savefig("./rxn_graph.png")
-    # print("Saved reaction graph plot in ./rxn_graph.png")
-    # print("FINISHED !")
+    rxn_graph = iterator.gererate_rxn_network(reactants, max_itr, ac_filters, conversion_filters, verbose=1)
+    # checking correctness of the result
+    print("number of species check:", "PASS" if len(rxn_graph.species) == 8 else "FAIL")
+    print("number of reactions check:", "PASS" if len(rxn_graph.reactions) == 9 else "FAIL")
+    res_rxn_strings = [" + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.reactants]) + 
+                    " -> " + 
+                    " + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.products])
+                    for reaction in rxn_graph.reactions]
+    correct_rxn_strings = [ "O -> [OH] + [H]", 
+                            "O -> [O] + [H] + [H]",
+                            "[OH] -> [O] + [H]",
+                            "[OH] + [OH] -> OO",
+                            "[OH] + [H] -> O",
+                            "[OH] + [O] -> O[O]",
+                            "[H] + [H] -> [H][H]",
+                            "[H] + [O] -> [OH]",
+                            "[O] + [O] -> O=O"]
+    print("reactions test:", "PASS" if set(res_rxn_strings) == set(correct_rxn_strings) else "FAIL")
+    visualize_rxn_graph(rxn_graph.to_netwokx_graph())
+    plt.show()
 
 def main():
-    # pre_g = iterate_over_a_specie_test("C#N")
-    # for i, s in enumerate(pre_g.species):
-    #     print("specie " + str(i))
-    #     print(s.ac_matrix.matrix)
-    # print("n reactions in pre:", len(pre_g.reactions))
-    # print("n species in pre:", len(pre_g.species))
-    gererate_rxn_network_test("C#N")
+    iterate_module_standard_test()
 
 if __name__ == '__main__':
     main()
