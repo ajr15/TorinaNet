@@ -7,10 +7,18 @@ class Reaction:
         - reactants (list of species): a list with reactant species
         - products (list of species): a list with product species"""
 
-    def __init__(self, reactants=None, products=None, properties={}):
+    def __init__(self, reactants=None, products=None, properties=None):
         self.reactants = reactants
         self.products = products
-        self.properties = properties
+        if properties is None:
+            self.properties = {
+                "r_ac_det": round(np.prod([np.linalg.det(r.ac_matrix.matrix) for r in reactants])),
+                "p_ac_det": round(np.prod([np.linalg.det(r.ac_matrix.matrix) for r in products])),
+                "r_num": len(reactants),
+                "p_num": len(products)
+            }
+        else:
+            self.properties = properties
 
     @staticmethod
     def from_ac_matrices(reactants, products):

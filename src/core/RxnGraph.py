@@ -5,6 +5,8 @@ from networkx.classes.function import neighbors
 import numpy as np
 from copy import copy
 import os
+
+from .AcMatrix.BinaryAcMatrix import BinaryAcMatrix
 from .Reaction import Reaction
 from .Specie import Specie
 from ..utils.TimeFunc import TimeFunc
@@ -47,6 +49,14 @@ class RxnGraph:
             self._specie_ids[specie_id] = len(self.species) # assign idx in graph for specie
             self.species.append(specie)
             return self.species[-1]
+
+    def has_specie(self, specie):
+        specie_id = specie._get_id_str()
+        return specie_id in self._specie_ids
+
+    def has_reaction(self, reaction):
+        rxn_id = reaction._get_id_str()
+        return rxn_id in self._rxn_ids
 
     @TimeFunc
     def add_reaction(self, reaction):
@@ -111,15 +121,13 @@ class RxnGraph:
             (RxnGraph) a copy of the reaction graph without the speice"""
         # check if specie is in graph
         specie_id = specie._get_id_str()
-        if not specie_id in self._specie_ids:
+        if not self.has_specie(specie):
             raise ValueError("Desired specie is not in the graph !")
         # check if there are defined reactants in the graph
         if self.reactant_species is None:
             raise NotImplementedError("The graph doesnt have defined reactants. This method is undefined in this case")
         # convert to networkx object
         network = self.to_netwokx_graph(use_internal_id=True)
-        # getting reactions to change (include specie as product)
-        rxns_to_change = set([i for i in nx.all_neighbors(network, specie_id) if not i in nx.neighbors(network, specie_id)])
         # removing reactions that the specie is a reactant in
         rxns_to_remove = set([rxn for rxn in nx.all_neighbors(network, specie_id)])
         network.remove_nodes_from(rxns_to_remove)
@@ -130,15 +138,12 @@ class RxnGraph:
         for rxn_id in self._rxn_ids:
             if rxn_id in keep_ids:
                 rxn = self.reactions[self._rxn_ids[rxn_id]]
-                # if rxn._get_id_str() in rxns_to_change:
-                #     products = [s for s in rxn.products if not s._get_id_str() == specie_id]
-                #     if not len(products) == 0:
-                #         new_rxn = Reaction(rxn.reactants, products)
-                #         nrxn_graph.add_reaction(new_rxn)
                 if rxn._get_id_str() in rxns_to_remove:
                     continue
                 else:
                     nrxn_graph.add_reaction(rxn)
+        # making sure nrxn has the same reactant species as parent graph
+        nrxn_graph.set_reactant_species(self.reactant_species)
         # returning a copy of the network with the required ids
         return nrxn_graph
 
@@ -165,6 +170,8 @@ class RxnGraph:
             if rxn_id in keep_ids:
                 rxn = self.reactions[self._rxn_ids[rxn_id]]
                 nrxn_graph.add_reaction(rxn)
+        # making sure nrxn has the same reactant species as parent graph
+        nrxn_graph.set_reactant_species(self.reactant_species)
         # returning a copy of the network with the required ids
         return nrxn_graph
 
@@ -201,14 +208,16 @@ class RxnGraph:
                     readSpecies = False
                     readReactions = True
                 elif readSpecies:
-                    self.species.append(Specie(line))
+                    s = BinaryAcMatrix.from_specie(Specie(line)).to_specie()
+                    s.identifier = line
+                    self.add_specie(s)
                 elif readReactions:
-                    rxn = Reaction()
                     reactant_idxs = [int(i) for i in line.split("=")[0].split(",") if not len(i) == 0]
-                    rxn.reactants = [self.species[i] for i in reactant_idxs]
+                    reactants = [self.species[i] for i in reactant_idxs]
                     product_idxs = [int(i) for i in line.split("=")[1].split(",") if not len(i) == 0 and not i == '\n']
-                    rxn.products = [self.species[i] for i in product_idxs]
-                    self.reactions.append(rxn)
+                    products = [self.species[i] for i in product_idxs]
+                    rxn = Reaction(reactants, products)
+                    self.add_reaction(rxn)
 
     def project_to_species(self):
         """Method to convert a bipartite reaction graph to a monopartite species graph"""
