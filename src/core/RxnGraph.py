@@ -209,7 +209,7 @@ class RxnGraph:
                     readReactions = True
                 elif readSpecies:
                     s = BinaryAcMatrix.from_specie(Specie(line)).to_specie()
-                    s.identifier = line
+                    s.identifier = line.strip()
                     self.add_specie(s)
                 elif readReactions:
                     reactant_idxs = [int(i) for i in line.split("=")[0].split(",") if not len(i) == 0]
@@ -235,7 +235,7 @@ class RxnGraph:
         if not use_internal_id:
             for i in range(len(self.species)):
                 if not type(self.species[i].identifier) is str:
-                    self.species[i].identifier = i
+                    self.species[i].identifier = str(i)
             network = nx.DiGraph()
             for i, rxn in enumerate(self.reactions):
                 for s in rxn.reactants:
