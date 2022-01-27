@@ -21,13 +21,17 @@ class RxnGraph:
         self._specie_ids = dict() # specie ID dict to contain texts with species properties
         self._rxn_ids = dict() # reaction ID dict to contain texts with reaction properties
 
-    def set_reactant_species(self, species):
+    def set_reactant_species(self, species, force_adding=False):
         # check if species are in graph and using graph species
         reactants = []
         for specie in species:
             specie_id = specie._get_id_str()
             if not specie_id in self._specie_ids:
-                raise ValueError("Some of the required species are not in the graph")
+                if not force_adding:
+                    raise ValueError("Some of the required species ({}) are not in the graph".format(specie.identifier))
+                else:
+                    s = self.add_specie(specie)
+                    reactants.append(s)
             else:
                 reactants.append(self.species[self._specie_ids[specie_id]])
         # set reactant species
@@ -90,7 +94,8 @@ class RxnGraph:
         # making set with nodes id strings to remove
         res = set()
         for source in sources:
-            res = res.union(set(nx.algorithms.dfs_tree(network, source._get_id_str()).nodes))
+            if source._get_id_str() in network:
+                res = res.union(set(nx.algorithms.dfs_tree(network, source._get_id_str()).nodes))
         return res
 
     def copy(self, keep_ids=None):
@@ -111,6 +116,8 @@ class RxnGraph:
         nrxn_graph = RxnGraph()
         for idx in rxn_idxs:
             nrxn_graph.add_reaction(self.reactions[idx])
+        # adding reactant species
+        nrxn_graph.set_reactant_species(self.reactant_species)
         return nrxn_graph
         
     def remove_specie(self, specie: Specie):
@@ -127,7 +134,7 @@ class RxnGraph:
         if self.reactant_species is None:
             raise NotImplementedError("The graph doesnt have defined reactants. This method is undefined in this case")
         # convert to networkx object
-        network = self.to_netwokx_graph(use_internal_id=True)
+        network = self.to_networkx_graph(use_internal_id=True)
         # removing reactions that the specie is a reactant in
         rxns_to_remove = set([rxn for rxn in nx.all_neighbors(network, specie_id)])
         network.remove_nodes_from(rxns_to_remove)
@@ -143,7 +150,7 @@ class RxnGraph:
                 else:
                     nrxn_graph.add_reaction(rxn)
         # making sure nrxn has the same reactant species as parent graph
-        nrxn_graph.set_reactant_species(self.reactant_species)
+        nrxn_graph.set_reactant_species(self.reactant_species, force_adding=True)
         # returning a copy of the network with the required ids
         return nrxn_graph
 
@@ -161,7 +168,7 @@ class RxnGraph:
         if self.reactant_species is None:
             raise NotImplementedError("The graph doesnt have defined reactants. This method is undefined in this case")
         # convert to networkx object
-        network = self.to_netwokx_graph(use_internal_id=True)
+        network = self.to_networkx_graph(use_internal_id=True)
         # running dfs to find other nodes to remove
         keep_ids = self._dfs_remove_id_str(network, reaction_id, self.reactant_species)
         # building a copy of RxnGraph without specie
@@ -227,7 +234,7 @@ class RxnGraph:
         """Method to convert a bipartite reaction graph to a monopartite reactions graph"""
         pass
 
-    def to_netwokx_graph(self, use_internal_id=False):
+    def to_networkx_graph(self, use_internal_id=False):
         """Convert RxnGraph object to a bipartite networkx graph.
         ARGS:
             - use_internal_id (bool): weather to use the internal id for reactions and species, for more robust conversion. default=False"""
