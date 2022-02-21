@@ -58,6 +58,26 @@ class AcMatrix (ABC):
             atoms.append(self.get_atom(i))
         return atoms
 
+    def _to_str(self) -> str:
+        """Method to write the ac matrix as a string (for internal use)"""
+        string = ""
+        for row in self.matrix:
+            for x in row:
+                string += str(x) + ","
+            string += ";"
+        return string
+
+    def _from_str(self, string: str) -> None:
+        """Method to read ac matrix from string (for internal use)"""
+        string_matrix = [s.split(",") for s in string.split(";")]
+        l = len(string_matrix) - 1
+        matrix = np.zeros((l, l))
+        for i in range(l):
+            for j in range(l):
+                if len(string_matrix[i][j]) > 0:
+                    matrix[i, j] = float(string_matrix[i][j])
+        self.__init__(matrix)
+
     def __len__(self):
         return len(self.matrix)
 

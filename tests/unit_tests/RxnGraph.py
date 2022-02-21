@@ -2,14 +2,14 @@ import sys; sys.path.append("../..")
 import numpy as np
 from matplotlib import pyplot as plt
 import networkx as nx
-from src.core.RxnGraph import RxnGraph
+from src.core.RxnGraph.RxnGraph import RxnGraph
 from src.core.Specie import Specie
 from src.core.Reaction import Reaction
 from src.core.AcMatrix.BinaryAcMatrix import BinaryAcMatrix
 
-from src.Iterate.daskIterator import Iterator
-from src.Iterate.ac_matrix_filters import max_bonds_per_atom
-from src.Iterate.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
+from src.Iterate.iterators.VanillaIterator import Iterator
+from src.Iterate.filters.ac_matrix_filters import max_bonds_per_atom
+from src.Iterate.filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
 from Iterate import visualize_rxn_graph
 
 

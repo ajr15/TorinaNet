@@ -92,5 +92,5 @@ class BinaryAcMatrix (AcMatrix):
         smiles = conv.WriteString(mol)
         # creating specie
         specie = Specie.from_ac_matrix(self)
-        specie.identifier = smiles
+        specie.identifier = smiles.strip()
         return specie

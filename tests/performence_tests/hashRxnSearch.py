@@ -3,8 +3,8 @@ import sys; sys.path.append("../..")
 import numpy as np
 from matplotlib import pyplot as plt
 from time import time
-from src.core.RxnGraph import RxnGraph as hashGraph
-from src.core.vanillaRxnGraph import RxnGraph as linearGraph
+from src.core.RxnGraph.RxnGraph import RxnGraph as hashGraph
+from src.core.RxnGraph.vanillaRxnGraph import RxnGraph as linearGraph
 from src.core.Reaction import Reaction
 from src.core.AcMatrix.BinaryAcMatrix import BinaryAcMatrix
 from src.Iterate.Iterator import Iterator
