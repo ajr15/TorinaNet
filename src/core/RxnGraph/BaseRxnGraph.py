@@ -1,5 +1,5 @@
 from abc import abstractclassmethod, ABC, abstractproperty
-from typing import Dict, Iterable, List, Set
+from typing import Dict, Iterable, List, Optional, Set
 import networkx as nx
 from ..Specie import Specie
 from ..Reaction import Reaction
@@ -14,9 +14,14 @@ class BaseRxnGraph (ABC):
         ac_matrix_type (TorinaNet.AcMatrix): type of AC matrix for specie representation to be used in the graph
         source_species (List[Specie]): list of source species (reactants) for the reaction graph"""
 
-    def __init__(self, ac_matrix_type: AcMatrix) -> None:
+    def __init__(self, ac_matrix_type: AcMatrix, use_charge=False) -> None:
         self.ac_matrix_type = ac_matrix_type
         self.source_species = None
+        self.use_charge = use_charge
+
+    
+    def make_unique_id(self, obj):
+        return obj._get_charged_id_str() if self.use_charge else obj._get_id_str()
 
     
     @abstractproperty
@@ -57,7 +62,10 @@ class BaseRxnGraph (ABC):
         RETURNS:
             (Specie) copy of the specie with the required AC matrix"""
         if specie.ac_matrix is None:
-            return Specie.from_ac_matrix(self.ac_matrix_type.from_specie(specie))
+            s = Specie.from_ac_matrix(self.ac_matrix_type.from_specie(specie))
+            s.properties.update(specie.properties)
+            s.charge = specie.charge
+            return s
         else:
             return specie
 
@@ -118,11 +126,11 @@ class BaseRxnGraph (ABC):
         else:
             network = nx.DiGraph()
             for i, rxn in enumerate(self.reactions):
-                rxn_id = rxn._get_id_str()
+                rxn_id = self.make_unique_id(rxn)
                 for s in rxn.reactants:
-                    network.add_edge(s._get_id_str(), rxn_id)
+                    network.add_edge(self.make_unique_id(s), rxn_id)
                 for s in rxn.products:
-                    network.add_edge(rxn_id, s._get_id_str())
+                    network.add_edge(rxn_id, self.make_unique_id(s))
         return network
 
     @abstractclassmethod
@@ -170,8 +178,8 @@ class BaseRxnGraph (ABC):
                 (Reaction) required reaction object from reaction graph or ValueError if reaction is not found"""
             raise NotImplementedError("get_reaction_from_id is not implemented for this subclass")
 
-    @staticmethod
-    def _dfs_remove_id_str(network: nx.DiGraph, id_str: str, sources: List[Specie]) -> Set[str]:
+
+    def _dfs_remove_id_str(self, network: nx.DiGraph, id_str: str, sources: List[Specie]) -> Set[str]:
         """Internal ethod to remove an object with given id_str from the reaction graph. Returns list of node id strings to keep in graph.
         ARGS:
             - id_str (str): id string for the desired object to remove (reaction or specie)
@@ -183,8 +191,8 @@ class BaseRxnGraph (ABC):
         # making set with nodes id strings to remove
         res = set()
         for source in sources:
-            if source._get_id_str() in network:
-                res = res.union(set(nx.algorithms.dfs_tree(network, source._get_id_str()).nodes))
+            if self.make_unique_id(source) in network:
+                res = res.union(set(nx.algorithms.dfs_tree(network, self.make_unique_id(source)).nodes))
         return res
 
     def copy(self, keep_ids=None):
@@ -220,7 +228,7 @@ class BaseRxnGraph (ABC):
         # check if there are defined reactants in the graph
         if self.source_species is None:
             raise NotImplementedError("The graph doesnt have defined source reactants. This method is undefined in this case")
-        specie_id = specie._get_id_str()
+        specie_id = self.make_unique_id(specie)
         # convert to networkx object
         network = self.to_networkx_graph(use_internal_id=True)
         # removing reactions that the specie is a reactant in
@@ -232,7 +240,7 @@ class BaseRxnGraph (ABC):
         nrxn_graph = BaseRxnGraph(self.ac_matrix_type)
         for rxn_id in keep_ids:
             rxn = self.get_reaction_from_id(rxn_id)
-            if rxn._get_id_str() in rxns_to_remove:
+            if self.make_unique_id(rxn) in rxns_to_remove:
                 continue
             else:
                 nrxn_graph.add_reaction(rxn)
@@ -253,7 +261,7 @@ class BaseRxnGraph (ABC):
         # check if there are defined reactants in the graph
         if self.source_species is None:
             raise NotImplementedError("The graph doesnt have defined source reactants. This method is undefined in this case")
-        reaction_id = reaction._get_id_str()
+        reaction_id = self.make_unique_id(reaction)
         # convert to networkx object
         network = self.to_networkx_graph(use_internal_id=True)
         # running dfs to find other nodes to remove
@@ -279,7 +287,7 @@ class BaseRxnGraph (ABC):
         """Method to make an index of specie_id to specie number in graph. For saving / reading reaction graph files."""
         res = {}
         for i, s in enumerate(self.species):
-            res[s._get_id_str()] = i
+            res[self.make_unique_id(s)] = i
         return res
 
     def save_to_file(self, path) -> None:
@@ -299,10 +307,10 @@ class BaseRxnGraph (ABC):
             for r in self.reactions:
                 st = ""
                 for sp in r.reactants:
-                    st += specie_index[sp._get_id_str()] + ","
+                    st += specie_index[self.make_unique_id(sp)] + ","
                 st += "="
                 for sp in r.products:
-                    st += specie_index[sp._get_id_str()] + ","
+                    st += specie_index[self.make_unique_id(sp)] + ","
                 st += "\n"
                 f.write(st)
 
@@ -333,7 +341,7 @@ class BaseRxnGraph (ABC):
 
 
     def make_specie_visited(self, specie: Specie):
-        self.get_specie_from_id(specie._get_id_str()).properties["visited"] = True
+        self.get_specie_from_id(self.make_unique_id(specie)).properties["visited"] = True
 
 
     def get_unvisited_species(self) -> List[Specie]:
@@ -359,3 +367,11 @@ class BaseRxnGraph (ABC):
     def get_n_reactions(self) -> int:
             """Method to get the number of reactions in graph"""
             return len(self.reactions)
+
+    def update_specie(self, specie: Specie):
+        """Method to update existing specie entry with a different one"""
+        raise NotImplementedError("Cannot update specie's properties in this reaction graph type")
+
+    def update_reaction(self, reaction: Reaction):
+        """Method to update exisiting reaction entry with a different one"""
+        raise NotImplementedError("Cannot update reaction's properties in this reaction graph type")

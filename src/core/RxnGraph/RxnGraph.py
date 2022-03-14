@@ -9,8 +9,8 @@ from ..Specie import Specie
 class RxnGraph (BaseRxnGraph):
     """Default reaction graph object. Using binary ac matrix."""
 
-    def __init__(self):
-        super().__init__(BinaryAcMatrix)
+    def __init__(self, use_charge=False):
+        super().__init__(BinaryAcMatrix, use_charge=use_charge)
         self._species = [] # list of species in reaction graph
         self._reactions = [] # list of reactions in reaction graph
         self._specie_ids = dict() # specie ID dict to contain texts with species properties
@@ -30,7 +30,7 @@ class RxnGraph (BaseRxnGraph):
     def add_specie(self, specie: Specie) -> Specie:
         s = self._read_specie_with_ac_matrix(specie)
         # check if specie is in graph
-        specie_id = s._get_id_str()
+        specie_id = self.make_unique_id(s)
         if specie_id in self._specie_ids:
             return self.species[self._specie_ids[specie_id]]
         else:
@@ -44,18 +44,18 @@ class RxnGraph (BaseRxnGraph):
 
     def has_specie(self, specie: Specie) -> bool:
         s = self._read_specie_with_ac_matrix(specie)
-        specie_id = s._get_id_str()
+        specie_id = self.make_unique_id(s)
         return specie_id in self._specie_ids
 
 
     def has_reaction(self, reaction: Reaction) -> bool:
-        rxn_id = reaction._get_id_str()
+        rxn_id = self.make_unique_id(reaction)
         return rxn_id in self._rxn_ids
 
 
     def add_reaction(self, reaction: Reaction) -> None:
         # checking if reaction is not in graph
-        rxn_id = reaction._get_id_str()
+        rxn_id = self.make_unique_id(reaction)
         if len(self.reactions) == 0 or not rxn_id in self._rxn_ids:
             # converting reaction species by graph species (and adds new species to graph)
             reactants = []
@@ -73,12 +73,12 @@ class RxnGraph (BaseRxnGraph):
         diff_species = []
         if len(self.species) < len(rxn_graph.species):
             for s in rxn_graph.species:
-                s_id = s._get_id_str()
+                s_id = self.make_unique_id(s)
                 if not s_id in self._specie_ids:
                     diff_species.append(s)
         else:
             for s in self.species:
-                s_id = s._get_id_str()
+                s_id = self.make_unique_id(s)
                 if not s_id in rxn_graph._specie_ids:
                     diff_species.append(s)
         return diff_species
