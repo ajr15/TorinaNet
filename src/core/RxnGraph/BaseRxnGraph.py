@@ -86,7 +86,7 @@ class BaseRxnGraph (ABC):
             else:
                 source.append(self.add_specie(specie))
         # set reactant species
-        self.reactant_species = source
+        self.source_species = source
 
 
     @abstractclassmethod
@@ -209,7 +209,7 @@ class BaseRxnGraph (ABC):
         else:
             rxns = self.reactions
         # copying reaction graph
-        nrxn_graph = BaseRxnGraph()
+        nrxn_graph = self.__class__()
         for rxn in rxns:
             nrxn_graph.add_reaction(rxn)
         # adding reactant species
@@ -237,13 +237,14 @@ class BaseRxnGraph (ABC):
         # running dfs to find other nodes to remove
         keep_ids = self._dfs_remove_id_str(network, specie_id, self.source_species)
         # building a copy of RxnGraph without specie
-        nrxn_graph = BaseRxnGraph(self.ac_matrix_type)
+        nrxn_graph = self.__class__(self.ac_matrix_type)
         for rxn_id in keep_ids:
-            rxn = self.get_reaction_from_id(rxn_id)
-            if self.make_unique_id(rxn) in rxns_to_remove:
-                continue
-            else:
-                nrxn_graph.add_reaction(rxn)
+            if not "number_of_atoms" in rxn_id: # keep_ids has also specie ids in it... this is filtering it. TODO: make it better
+                if rxn_id in rxns_to_remove:
+                    continue
+                else:
+                    rxn = self.get_reaction_from_id(rxn_id)
+                    nrxn_graph.add_reaction(rxn)
         # making sure nrxn has the same reactant species as parent graph
         nrxn_graph.set_source_species(self.source_species, force=True)
         # returning a copy of the network with the required ids
@@ -265,12 +266,13 @@ class BaseRxnGraph (ABC):
         # convert to networkx object
         network = self.to_networkx_graph(use_internal_id=True)
         # running dfs to find other nodes to remove
-        keep_ids = self._dfs_remove_id_str(network, reaction_id, self.reactant_species)
+        keep_ids = self._dfs_remove_id_str(network, reaction_id, self.source_species)
         # building a copy of RxnGraph without specie
-        nrxn_graph = BaseRxnGraph()
+        nrxn_graph = self.__class__()
         for rxn_id in keep_ids:
-            rxn = self.get_reaction_from_id(rxn_id)
-            nrxn_graph.add_reaction(rxn)
+            if not "number_of_atoms" in rxn_id: # same problem as in remove_specie..
+                rxn = self.get_reaction_from_id(rxn_id)
+                nrxn_graph.add_reaction(rxn)
         # making sure nrxn has the same reactant species as parent graph
         nrxn_graph.set_source_species(self.source_species, force=True)
         # returning a copy of the network with the required ids

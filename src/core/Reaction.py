@@ -1,4 +1,3 @@
-from winreg import REG_SZ
 import numpy as np
 from .Specie import Specie
 

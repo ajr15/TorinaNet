@@ -1,8 +1,8 @@
 from copy import copy
 from typing import List
-from src.core.Reaction import Reaction
-from src.core.Specie import Specie
-from src.iterate.filters.charge_filters import MaxAbsCharge
+from ...core.Reaction import Reaction
+from ...core.Specie import Specie
+from ..filters.charge_filters import MaxAbsCharge
 from ...core.RxnGraph.BaseRxnGraph import BaseRxnGraph
 from itertools import product
 
@@ -89,7 +89,7 @@ class ChargeIterator:
         """Method to add charge information to uncharged reaction graph."""
         # initializing run
         charged_rxn_graph = self.charged_rxn_grph_type(use_charge=True)
-        species_charges_dict = {self.uncharged_rxn_graph.make_unique_id(s): [s.charge] for s in self.uncharged_rxn_graph.reactant_species} # dict of specie_id -> list of possible charges
+        species_charges_dict = {self.uncharged_rxn_graph.make_unique_id(s): [s.charge] for s in self.uncharged_rxn_graph.source_species} # dict of specie_id -> list of possible charges
         visited_reactions = set()
         uncharged_G = self.uncharged_rxn_graph.to_networkx_graph(use_internal_id=True)
         new_species = [s for s in species_charges_dict.keys()]
@@ -99,8 +99,8 @@ class ChargeIterator:
                 max_abs_charge = charge_filter.max_abs_charge
         if max_abs_charge is None:
             raise ValueError("Must include MaxAbsCharge in charge filter")
-        ajr = []
         while True:
+            ajr = []
             # iterating over reactions with new species
             for scanned_specie_id in new_species:
                 # adding all possible redox reactions with the species
@@ -140,6 +140,7 @@ class ChargeIterator:
             if verbose >= 1:
                 print("Visited {} out of {} ({:.2f}%)".format(len(visited_reactions), 
                                                                 self.uncharged_rxn_graph.get_n_reactions(), 
-                                                                len(visited_reactions) / self.uncharged_rxn_graph.get_n_reactions() * 100))
-            if len(visited_reactions) == self.uncharged_rxn_graph.get_n_reactions():
+                                                                (len(visited_reactions)) / self.uncharged_rxn_graph.get_n_reactions() * 100))
+            if len(visited_reactions) == self.uncharged_rxn_graph.get_n_reactions() or len(new_species) == 0:
+                charged_rxn_graph.set_source_species(self.uncharged_rxn_graph.source_species)
                 return charged_rxn_graph

@@ -1,1 +1,1 @@
-from .src import core, analyze, iterate
+from .src import core, analyze, Iterate
