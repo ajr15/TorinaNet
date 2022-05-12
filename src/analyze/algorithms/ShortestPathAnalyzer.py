@@ -1,3 +1,5 @@
+import pandas as pd
+from typing import List, Optional
 from .shortest_path_finders import dijkstra_shortest_path
 from ...core.RxnGraph.BaseRxnGraph import BaseRxnGraph
 from ...core.Specie import Specie
@@ -38,3 +40,32 @@ class ShortestPathAnalyzer:
             new_rxn = self.shortest_path_table.loc[parent_specie, "rxn"]
             rxn_path.append(new_rxn)
         return [self.rxn_graph.get_reaction_from_id(rid) for rid in rxn_path]
+
+
+    def get_species_with_dist(self, distance: int) -> List[Specie]:
+        """Method to get a list of species with a desired distance from the source species.
+        ARGS:
+            - distance (int): desired distance
+        RETURNS:
+            (List[Specie]) list of species with distance. returns empty list if no specie is found"""
+        # list of species IDs that are within the distance
+        sids = self.shortest_path_table[self.shortest_path_table["dist"] == distance].index
+        return [self.rxn_graph.get_specie_from_id(sid) for sid in sids]
+
+
+    def get_distance_distribution(self, species: Optional[List[Specie]]=None) -> dict:
+        """Method to get a distance distribution of species.
+        ARGS:
+            - species (Optional[List[Specie]]): list of species to make distribution for. default=None (all species)
+        RETURNS:
+            (dict) dictionary with distance (keys) and number of species (values)"""
+        # reading specie ids
+        if species:
+            sids = [self.rxn_graph.make_unique_id(s) for s in species]
+        else:
+            sids = self.shortest_path_table.index
+        # grouping distance table
+        res = self.shortest_path_table.loc[sids, :].groupby(["dist"]).count()
+        # returning results as a dictionary
+        return res.to_dict().values()[0]
+        

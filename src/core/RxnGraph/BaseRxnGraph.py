@@ -1,6 +1,11 @@
 from abc import abstractclassmethod, ABC, abstractproperty
-from typing import Dict, Iterable, List, Optional, Set
+from typing import List, Set
+import os
+import pandas as pd
 import networkx as nx
+import json
+from zipfile import ZipFile
+from io import StringIO
 from ..Specie import Specie
 from ..Reaction import Reaction
 from ..AcMatrix.AcMatrix import AcMatrix
@@ -285,62 +290,113 @@ class BaseRxnGraph (ABC):
         for rxn in rxn_graph.reactions:
             self.add_reaction(rxn)
 
-    def _make_specie_index(self) -> Dict[str, int]:
-        """Method to make an index of specie_id to specie number in graph. For saving / reading reaction graph files."""
-        res = {}
+    def _make_specie_df(self) -> pd.DataFrame:
+        """Method to convert all specie data into a pd.DataFrame object. to be used for saving / reading reaction graph files"""
+        res = pd.DataFrame()
         for i, s in enumerate(self.species):
-            res[self.make_unique_id(s)] = i
+            d = {}
+            d["idx"] = i
+            d["ac_mat_str"] = s.ac_matrix._to_str()
+            d["sid"] = self.make_unique_id(s)
+            d["charge"] = s.charge
+            d.update(s.properties)
+            res = res.append(d, ignore_index=True)
+        res = res.set_index("sid")
+        return res
+
+    def _make_reactions_df(self, species_df) -> pd.DataFrame:
+        """Method to convert all reaction information into pd.DataFrame object. to be used for saving / reading reaction graph files"""
+        res = pd.DataFrame()
+        for r in self.reactions:
+            d = {}
+            d.update(r.properties)
+            st = ""
+            for sp in r.reactants:
+                st += species_df.loc[self.make_unique_id(sp), "idx"] + ","
+            st += "="
+            for sp in r.products:
+                st += species_df.loc[self.make_unique_id(sp), "idx"] + ","
+            d["r_str"] = st
+            res = res.append(d, ignore_index=True)
+        res = res.set_index("r_str")
         return res
 
     def save_to_file(self, path) -> None:
         """Save the graph information to a file.
         ARGS:
             - path (str): path to file """
-        specie_index = self._make_specie_index()
-        with open(path, "w") as f:
-            for s in self.species:
-                st = s.ac_matrix._to_str()
-                if "visited" in s.properties:
-                    st += " {}".format(1 if s.properties["visited"] else 0)
-                else:
-                    st += " 0"
-                f.write(st + "\n")
-            f.write("\n")
-            for r in self.reactions:
-                st = ""
-                for sp in r.reactants:
-                    st += specie_index[self.make_unique_id(sp)] + ","
-                st += "="
-                for sp in r.products:
-                    st += specie_index[self.make_unique_id(sp)] + ","
-                st += "\n"
-                f.write(st)
+        path_basename = os.path.splitext(path)[0]
+        # saving specie_df temporarily
+        specie_df = self._make_specie_df()
+        specie_df.to_csv(path_basename + "_species")
+        # saving reaction_df temporarily
+        rxn_df = self._make_reactions_df(specie_df)
+        rxn_df.to_csv(path_basename + "_reactions")
+        # saving source specie unique IDs in a temp file
+        with open(path_basename + "_params", "w") as f:
+            d = {"charged": self.use_charge, "source_species": self.source_species}
+            json.dump(d, f)
+        # saving reaction graph as archive file
+        with ZipFile(path, "w") as f:
+            f.write(path_basename + "_species")
+            f.write(path_basename + "_reactions")
+            f.write(path_basename + "_params")
+        # removing temporary files
+        os.remove(path_basename + "_species")
+        os.remove(path_basename + "_reactions")
+        os.remove(path_basename + "_params")
 
-    def from_file(self, path) -> None:
+
+    @classmethod
+    def from_file(cls, path):
         """Load reaction graph data from file.
         ARGS:
-            - path (str): path to the reaction graph file"""
-        with open(path, "r") as f:
-            read_species = True
-            read_reactions = False
-            for line in f.readlines():
-                if len(line) == 0:
-                    read_species = False
-                    read_reactions = True
-                elif read_species:
-                    mat_str, visited = line.split(" ")
-                    specie_mat = self.ac_matrix_type()._from_str(mat_str)
-                    specie = specie_mat.to_specie()
-                    specie.properties["visited"] = True if visited == "1" else False
-                    self.add_specie(specie)
-                elif read_reactions:
-                    reactant_idxs = [int(s) for s in line.split("=")[0].split(",") if not len(s) == 0]
-                    reactants = [self.species[i] for i in reactant_idxs]
-                    product_idxs = [int(s) for s in line.split("=")[-1].split(",") if not len(s) == 0]
-                    products = [self.species[i] for i in product_idxs]
-                    rxn = Reaction(reactants, products)
-                    self.add_reaction(rxn)
-
+            - path (str): path to the reaction graph file
+        RETURNS:
+            (RxnGraph) reaction graph object"""
+        with ZipFile(path, "r") as f:
+            # init
+            path_basename = os.path.splitext(path)[0]
+            # setting graph with proper charge reading
+            with StringIO(f.read(path_basename + "_source")) as f:
+                d = json.load(f)
+                rxn_graph = cls.__class__(d["charged"])
+                # setting source species
+                species = []
+                for sid in d["source_species"]:
+                    species.append(rxn_graph.get_specie_from_id(sid))
+                rxn_graph.set_source_species(species, force=True)
+            # reading specie csv from zip to pd.DataFrame
+            species_df = pd.read_csv(StringIO(f.read(path_basename + "_species")))
+            for specie_row in species_df.iterrows():
+                # reading specie from ac_matrix string
+                specie_mat = rxn_graph.ac_matrix_type()._from_str(specie_row["ac_mat_str"])
+                specie = specie_mat.to_specie()
+                # reading charge
+                specie.charge = specie_row["charge"]
+                # adding properties
+                for c in specie_row.index:
+                    if not c in ["idx", "ac_mat_str"]:
+                        specie.properties[c] = specie_row[c]
+                # adding specie to graph
+                rxn_graph.add_specie(specie)
+            # reading reactions csv from zip to pd.DataFrame
+            reactions_df = pd.read_csv(StringIO(f.read(path_basename + "_reactions")))
+            for rxn_row in reactions_df.iterrows():
+                # reading reaction string
+                r_str = rxn_row["r_str"]
+                reactant_idxs = [int(s) for s in r_str.split("=")[0].split(",") if not len(s) == 0]
+                reactants = [rxn_graph.species[i] for i in reactant_idxs]
+                product_idxs = [int(s) for s in r_str.split("=")[-1].split(",") if not len(s) == 0]
+                products = [rxn_graph.species[i] for i in product_idxs]
+                rxn = Reaction(reactants, products)
+                # adding properties
+                for c in rxn_row.index:
+                    if not c in ["r_str"]:
+                        rxn.properties[c] = rxn_row[c]
+                # pushing to graph
+                rxn_graph.add_reaction(rxn)
+        return rxn_graph
 
     def make_specie_visited(self, specie: Specie):
         self.get_specie_from_id(self.make_unique_id(specie)).properties["visited"] = True

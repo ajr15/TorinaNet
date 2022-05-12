@@ -84,6 +84,16 @@ class RxnGraph (BaseRxnGraph):
         return diff_species
 
 
+    def has_specie_id(self, sid: str) -> bool:
+        """Check if graph contains a specie ID"""
+        return sid in self._specie_ids
+    
+
+    def has_reaction_id(self, rid: str) -> bool:
+        """Check if graph contains a reaction ID"""
+        return rid in self._rxn_ids
+    
+
     def get_specie_from_id(self, specie_id: str) -> Specie:
         return self.species[self._specie_ids[specie_id]]
 

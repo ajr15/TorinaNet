@@ -1,4 +1,5 @@
 from abc import ABC, abstractstaticmethod, abstractclassmethod
+from typing import Optional
 import networkx as nx
 import numpy as np
 
@@ -83,3 +84,14 @@ class AcMatrix (ABC):
 
     def copy(self):
         return self.__init__(self.matrix.copy())
+
+    def build_geometry(self, connected_molecules: Optional[dict]=None):
+        """Method to build a geometry for the AC matrix, given a dictionary with dummy atom information.
+        ARGS:
+            - connected_molecules (dict): dictionary with dummy atom masses (keys) 
+                                        and molecule structures (TorinaX species) + connecting atom index in molecule.
+                                        for example:
+                                            {-1: {catalyst_molecule1, 2}
+        RETURNS:
+            (TorinaX.Specie) TorinaX structure or molecule"""
+        raise NotImplementedError("Cannot build geometry for the required AcMatrix object")
