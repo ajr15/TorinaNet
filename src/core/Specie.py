@@ -4,9 +4,13 @@ import openbabel as ob
 class Specie:
     """Core object to hold information and methods on a single specie"""
 
-    def __init__(self, identifier=None, properties={}, charge=None):
+    def __init__(self, identifier=None, properties=None, charge=None):
         self.identifier = identifier
-        self.properties = properties
+        if properties:
+            self.properties = properties
+        else:
+            self.properties = {}
+        self._id_properties = {} # dictionary of properties saved for ID string generation
         self.ac_matrix = None
         self.charge = charge
 
@@ -23,8 +27,8 @@ class Specie:
         """Method to read a Specie from an AC matrix"""
         s = Specie(None, {})
         # calculates important (and quick) properties of matrix
-        s.properties['determinant'] = round(np.linalg.det(ac.matrix))
-        s.properties['number_of_atoms'] = len(ac.matrix)
+        s._id_properties['determinant'] = round(np.linalg.det(ac.matrix))
+        s._id_properties['number_of_atoms'] = len(ac.matrix)
         # saves matrix as an attribute
         s.ac_matrix = ac
         return s
@@ -32,7 +36,7 @@ class Specie:
     def _get_id_str(self):
         s = ''
         for k in ['determinant', 'number_of_atoms']:
-            if k in self.properties.keys():
+            if k in self._id_properties.keys():
                 s += "_" + k + "_" + str(self.properties[k])
             else:
                 s += k + "_NONE"
@@ -51,8 +55,8 @@ class Specie:
     def __eq__(self, x):
         # if not equal check properties
         conditions = []
-        keys = set(list(self.properties.keys()) + list(x.properties.keys()))
+        keys = set(list(self._id_properties.keys()) + list(x._id_properties.keys()))
         for k in keys:
-            if k in self.properties.keys() and k in x.properties.keys():
-                conditions.append(self.properties[k] == x.properties[k])
+            if k in self._id_properties.keys() and k in x._id_properties.keys():
+                conditions.append(self._id_properties[k] == x._id_properties[k])
         return all(conditions)

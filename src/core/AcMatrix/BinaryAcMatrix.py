@@ -1,8 +1,10 @@
 from .AcMatrix import AcMatrix
 from ..Specie import Specie
+from .utils import join_molecules, guess_geometry, mm_geometry_optimization, sort_by_diagonal, obmol_to_molecule
 import openbabel as ob
 import networkx as nx
 import numpy as np
+from typing import Optional
 
 class BinaryAcMatrix (AcMatrix):
     """Binary AC matrix object"""
@@ -10,7 +12,7 @@ class BinaryAcMatrix (AcMatrix):
     def __init__(self, matrix):
         self.matrix = matrix
     
-    def get_atom(self, i):
+    def get_atom(self, i: int):
         # the diagonal of the ac matrix is the list of atomic number
         if i > len(self.matrix):
             raise ValueError("too high index {}, number of atoms {}".format(i, len(self.matrix)))
@@ -38,7 +40,7 @@ class BinaryAcMatrix (AcMatrix):
         return G
 
     @staticmethod
-    def from_networkx_graph(G):
+    def from_networkx_graph(G: nx.Graph):
         """Method to read AC matrix from NetworkX object. Graph must contain data on atomic number as node properties."""
         mat = np.zeros((len(G.nodes), len(G.nodes)))
         node_to_idx = {node: i for i, node in enumerate(G.nodes())}
@@ -49,29 +51,33 @@ class BinaryAcMatrix (AcMatrix):
             mat[i, i] = n[-1]['Z']
         return BinaryAcMatrix(mat)
 
-    @staticmethod
-    def from_specie(specie, add_hydrogens=True):
+    @classmethod
+    def from_specie(cls, specie: Specie, add_hydrogens: bool=True):
         """Abastract method to create AC matrix from a Specie"""
         if specie.ac_matrix is None:
             obmol = specie.parse_identifier()
             if add_hydrogens:
                 obmol.AddHydrogens()
-            ac = np.zeros((obmol.NumAtoms(), obmol.NumAtoms()))
-            # writing off diagonal values - bond orders between atoms
-            for i in range(obmol.NumBonds()):
-                bond = obmol.GetBond(i)
-                i = bond.GetBeginAtomIdx() - 1
-                j = bond.GetEndAtomIdx() - 1
-                ac[i, j] = 1
-                ac[j, i] = 1
-            # writing diagonal values - atom numbers
-            for i in range(obmol.NumAtoms()):
-                ac[i, i] = obmol.GetAtom(i + 1).GetAtomicNum()
-            return BinaryAcMatrix(ac)
+            return cls.from_obmol(obmol)
         else:
             return BinaryAcMatrix(specie.ac_matrix.matrix)
 
-    def to_specie(self):
+    @staticmethod
+    def from_obmol(obmol):
+        ac = np.zeros((obmol.NumAtoms(), obmol.NumAtoms()))
+        # writing off diagonal values - bond orders between atoms
+        for i in range(obmol.NumBonds()):
+            bond = obmol.GetBond(i)
+            i = bond.GetBeginAtomIdx() - 1
+            j = bond.GetEndAtomIdx() - 1
+            ac[i, j] = 1
+            ac[j, i] = 1
+        # writing diagonal values - atom numbers
+        for i in range(obmol.NumAtoms()):
+            ac[i, i] = obmol.GetAtom(i + 1).GetAtomicNum()
+        return BinaryAcMatrix(ac)
+
+    def to_obmol(self) -> ob.OBMol:
         # using OpenBabel because of bond order perception method
         mol = ob.OBMol()
         # adding atoms
@@ -84,6 +90,10 @@ class BinaryAcMatrix (AcMatrix):
             for j in range(i + 1, len(self.matrix)):
                 if self.matrix[i][j] == 1:
                     mol.AddBond(i + 1, j + 1, 1)
+        return mol
+
+    def to_specie(self) -> Specie:
+        mol = self.to_obmol()
         # perceiving "correct" bond orders
         mol.PerceiveBondOrders()
         # getting SMILES string
@@ -94,3 +104,28 @@ class BinaryAcMatrix (AcMatrix):
         specie = Specie.from_ac_matrix(self)
         specie.identifier = smiles.strip()
         return specie
+
+    def build_geometry(self, connected_molecules: Optional[dict]=None, force_field: str="UFF", n_steps: int=1000):
+        # start from getting the guess geometry for the unbounded part of the molecule
+        # sorting, to order by atoms and binding sites (integers > 0 and integers =< 0)
+        sorted_mat = sort_by_diagonal(self.matrix)
+        # finding the bounded part of the matrix
+        bounded_idx = len(sorted_mat) - 1
+        for i in range(len(sorted_mat)):
+            if sorted_mat[i, i] <= 0:
+                bounded_idx = i
+                break
+        # reading as a specie
+        unbound_mat = BinaryAcMatrix(sorted_mat[:bounded_idx, :bounded_idx])
+        specie = obmol_to_molecule(unbound_mat.to_obmol())
+        # making guess geometry for specie
+        specie = guess_geometry(specie)
+        # now connecting molecules (supports only one molecule for now)
+        for i in range(bounded_idx, len(self.matrix)):
+            molecule = connected_molecules[self.matrix[i, i]]["molecule"]
+            binding_atom = connected_molecules[self.matrix[i, i]]["binding_atom"]
+            specie_atom = self.get_neighbors(i)
+            molecule = join_molecules(molecule, specie, binding_atom, specie_atom, 1.5)
+        # optimizing geometry
+        molecule = mm_geometry_optimization(molecule, force_field, n_steps)
+        return molecule

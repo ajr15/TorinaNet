@@ -8,19 +8,19 @@ class Reaction:
         - reactants (list of species): a list with reactant species
         - products (list of species): a list with product species"""
 
-    def __init__(self, reactants=None, products=None, properties=None):
+    def __init__(self, reactants, products, properties=None):
         self.reactants = reactants
         self.products = products
         if properties is None:
-            self.properties = {
+            self.properties = {}
+        else:
+            self.properties = properties
+        self._id_properties = {
                 "r_ac_det": round(np.prod([np.linalg.det(r.ac_matrix.matrix) for r in reactants])),
                 "p_ac_det": round(np.prod([np.linalg.det(r.ac_matrix.matrix) for r in products])),
                 "r_num": len(reactants),
                 "p_num": len(products)
             }
-        else:
-            self.properties = properties
-
 
     @staticmethod
     def from_ac_matrices(reactants, products):
@@ -43,18 +43,18 @@ class Reaction:
             else:
                 ajr.products.pop(prod_id_dict[sid])
         # calculating reaction's properties
-        ajr.properties['r_num'] = len(ajr.reactants)
-        ajr.properties['p_num'] = len(ajr.products)
-        ajr.properties['r_ac_det'] = round(np.prod([s.properties["determinant"] for s in ajr.reactants]))
-        ajr.properties['p_ac_det'] = round(np.prod([s.properties["determinant"] for s in ajr.products]))
+        ajr._id_properties['r_num'] = len(ajr.reactants)
+        ajr._id_properties['p_num'] = len(ajr.products)
+        ajr._id_properties['r_ac_det'] = round(np.prod([s._id_properties["determinant"] for s in ajr.reactants]))
+        ajr._id_properties['p_ac_det'] = round(np.prod([s._id_properties["determinant"] for s in ajr.products]))
         return ajr
 
 
     def _get_id_str(self):
         s = ''
         for k in ['r_ac_det', 'p_ac_det', 'r_num', 'p_num']:
-            if k in self.properties.keys():
-                s += "_" + k + "_" + str(self.properties[k])
+            if k in self._id_properties.keys():
+                s += "_" + k + "_" + str(self._id_properties[k])
             else:
                 s += k + "_NONE"
         return s
@@ -81,8 +81,8 @@ class Reaction:
     def __eq__(self, x):
         # if not equal check properties
         conditions = []
-        keys = set(list(self.properties.keys()) + list(x.properties.keys()))
+        keys = set(list(self._id_properties.keys()) + list(x._id_properties.keys()))
         for k in keys:
-            if k in self.properties.keys() and k in x.properties.keys():
-                conditions.append(self.properties[k] == x.properties[k])
+            if k in self._id_properties.keys() and k in x._id_properties.keys():
+                conditions.append(self._id_properties[k] == x._id_properties[k])
         return all(conditions)

@@ -1,0 +1,40 @@
+{
+    "system": {
+        "results_dir": ".",
+        "stopping_condition": {
+            "max_iter": 5
+        },
+        "reactants": [],
+        "enumerate_redox_reactions": false,
+        "slurm_client_config": {
+            "cpus_per_task": 16,
+            "memory_per_task": 32,
+            "job_name": "slurm",
+            "client_config_file": "default"
+        },
+        "dask_client_config": {
+            "cores": 32,
+            "memory": 64,
+            "processes": 32
+        },
+        "connected_molecules": {}
+    },
+    "elementary_reactions_enumeration": {
+        "ac_matrix_filters": [],
+        "conversion_matrix_filters": {"max_changing_bonds": 2}
+    },
+    "redox_reactions_enumeration": {
+        "max_oxidation": 0,
+        "max_reduction": 0,
+        "max_abs_charge": 0
+    },
+    "energy_calculation": {
+        "energy_th": 30,
+        "computation": {
+            "program": "",
+            "input_type": "",
+            "comp_kwargs": {},
+            "output_type": ""
+        }
+    }
+}
