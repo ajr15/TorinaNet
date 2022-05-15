@@ -1,6 +1,7 @@
 # ignore python compiled / optimized files
 __pycache__/
 *.py[cod]
+.idea
 
 # ignore vscode settigns
 .vscode/

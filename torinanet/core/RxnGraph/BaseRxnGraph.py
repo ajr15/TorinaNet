@@ -321,7 +321,7 @@ class BaseRxnGraph (ABC):
         res = res.set_index("r_str")
         return res
 
-    def save_to_file(self, path) -> None:
+    def save(self, path) -> None:
         """Save the graph information to a file.
         ARGS:
             - path (str): path to file """

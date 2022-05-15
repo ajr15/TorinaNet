@@ -2,7 +2,7 @@ from abc import ABC, abstractclassmethod
 
 class StopCondition (ABC):
 
-    """Abastract stopping condition for the Iterate module"""
+    """Abastract stopping condition for the iterate module"""
 
     @abstractclassmethod
     def check(self, rxn_graph, itr_count):

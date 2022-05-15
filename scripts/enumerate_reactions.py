@@ -1,4 +1,5 @@
 """Main script for enumerating elementary reactions"""
+import sys; sys.path += ["/home/shaharpit/Personal/TorinaX", "/home/shaharpit/Personal/TorinaNet"]
 import argparse
 import os
 import json
@@ -10,9 +11,9 @@ from dask.distributed import Client
 import dask.dataframe as dd
 import openbabel as ob
 import collections.abc
-import TorinaNet as tn
-import TorinaX as tx
-from tx.utils.obUtils import ob_mol_from_file, molecule_to_obmol
+import torinanet as tn
+import torinax as tx
+from torinax.utils.openbabel import obmol_to_molecule, molecule_to_obmol
 
 
 def recursive_dict_update(d, u):
@@ -27,16 +28,19 @@ def parse_input_dictionary(d: dict):
     """Method to parse the input dictionary into dictionary with python objects"""
     # parse elemantary reaction enumeration input variables
     ac_filters = []
-    for ac_filter_d in d["redox_reactions_enumeration"]["ac_filters"]:
-        ac_filter = getattr(tn.Iterate.ac_matrix_filters, ac_filter_d["filter_name"])
+    for ac_filter_d in d["elementary_reactions_enumeration"]["ac_matrix_filters"]:
+        ac_filter = getattr(tn.iterate.ac_matrix_filters, ac_filter_d["filter_name"])
+        if ac_filter_d["filter_name"] == "MaxAtomsOfElement":
+            if "max_atoms_of_element_dict" in ac_filter_d["filter_kwargs"]:
+                ac_filter_d["filter_kwargs"]["max_atoms_of_element_dict"] = {int(k): v for k, v in ac_filter_d["filter_kwargs"]["max_atoms_of_element_dict"].items()}
         ac_filter = ac_filter(**ac_filter_d["filter_kwargs"])
         ac_filters.append(ac_filter)
-    d["redox_reactions_enumeration"]["ac_filters"] = ac_filters
+    d["elementary_reactions_enumeration"]["ac_matrix_filters"] = ac_filters
     # parse system block
     # parse connected molecules
     connected_mols = {}
     for k, mol_d in d["system"]["connected_molecules"].items():
-        mol = ob_mol_from_file(mol_d["xyz"])
+        mol = obmol_to_molecule(mol_d["xyz"])
         connected_mols[k] = {"mol": mol, 
                             "binding_atom": mol_d["binding_atom"],
                             "charge": mol_d["charge"]}
@@ -50,19 +54,19 @@ def parse_input_dictionary(d: dict):
     # find program
     config_file_path = d["system"]["slurm_client_config"]["client_config_file"]
     if config_file_path == "default":
-        config_file_path = os.path.join(os.path.dirname(tx.__file__), "scripts", "slurm", "slurm_config.py")
+        config_file_path = os.path.join(os.path.dirname(os.path.dirname(tx.__file__)), "scripts", "slurm", "slurm_config.py")
     spec = importlib.util.spec_from_file_location("slurm_config", config_file_path)
     slurm_config = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(slurm_config)
-    d["energy_calculation"]["program"] = slurm_config.job_dict[d["energy_calculation"]["program"]]
+    d["energy_calculation"]["computation"]["program"] = slurm_config.job_dict[d["energy_calculation"]["computation"]["program"]]
     # find input type
-    type_str = d["energy_calculation"]["input_type"]
-    pkg = importlib.import_module("TorinaX.src.FileParser.{}".format(type_str, type_str))
-    d["energy_calculation"]["input_type"] = getattr(pkg, type_str)
+    type_str = d["energy_calculation"]["computation"]["input_type"]
+    pkg = importlib.import_module("torinax.io.{}".format(type_str, type_str))
+    d["energy_calculation"]["computation"]["input_type"] = getattr(pkg, type_str)
     # find output type
-    type_str = d["energy_calculation"]["output_type"]
-    pkg = importlib.import_module("TorinaX.src.FileParser.{}".format(type_str, type_str))
-    d["energy_calculation"]["output_type"] = getattr(pkg, type_str)
+    type_str = d["energy_calculation"]["computation"]["output_type"]
+    pkg = importlib.import_module("torinax.io.{}".format(type_str, type_str))
+    d["energy_calculation"]["computation"]["output_type"] = getattr(pkg, type_str)
     return d
 
 def estimate_charge(ac_string: str, connected_molecules: dict) -> int:
@@ -83,8 +87,7 @@ def estimate_charge(ac_string: str, connected_molecules: dict) -> int:
     if charge_model.ComputeCharges(obmol):
         charges = charge_model.GetFormalCharges()
         return int(sum(charges)) + added_charge
-    else:
-        return None
+
 
 def estimate_charges(dask_client, rxn_graph, specie_df, connected_molecules_charges):
     # estimate charges of molecules
@@ -146,8 +149,8 @@ def build_molecules(dask_client, xyz_directory: str, specie_df: dd.DataFrame, co
 
 def calculate_row_cmd(specie_df, row, program, input_type, input_file_dir, comp_kwdict, output_extension) -> str:
     """Method to make the shell commands and files required for energy calculation of a specie. returns the command string"""
-    molecule = ob_mol_from_file(row["xyz_path"])
-    in_file_path = os.path.join(input_file_dir, row["sid"] + "." + infile.extension)
+    molecule = obmol_to_molecule(row["xyz_path"])
+    in_file_path = os.path.join(input_file_dir, row["sid"] + "." + input_type.extension)
     specie_df.loc[row["sid"], "input_file"] = in_file_path
     specie_df.loc[row["sid"], "output_file"] = os.path.join(os.path.dirname(input_file_dir), 
                                                             row["sid"] + "_out", row["sid"] + "." + output_extension)
@@ -179,7 +182,7 @@ def read_energy_outputs(specie_df, output_type):
         else:
             # checking if optimized to a correct structure
             outspecie = f.read_specie()
-            inspecie = ob_mol_from_file(specie_df.loc[sid, "xyz_path"])
+            inspecie = obmol_to_molecule(specie_df.loc[sid, "xyz_path"])
             if not compare_species(inspecie, outspecie):
                 specie_df.loc[sid, "good_geometry"] = False
             else:
@@ -203,10 +206,11 @@ def compare_species(specie1, specie2) -> bool:
 
 
 def enumerate_elementary_reactions(rxn_graph, ac_filters, max_changing_bonds):
-    conversion_filters = [tn.Iterate.conversion_matrix_filters.MaxChangingBonds(max_changing_bonds), 
-                            tn.Iterate.conversion_matrix_filters.OnlySingleBonds()]
-    stop_cond = tn.Iterate.stop_conditions.MaxIterNumber(1)
-    iterator = tn.Iterate.Iterator(rxn_graph)
+    print(ac_filters[0])
+    conversion_filters = [tn.iterate.conversion_matrix_filters.MaxChangingBonds(max_changing_bonds),
+                            tn.iterate.conversion_matrix_filters.OnlySingleBonds()]
+    stop_cond = tn.iterate.stop_conditions.MaxIterNumber(1)
+    iterator = tn.iterate.Iterator(rxn_graph)
     rxn_graph = iterator.enumerate_reactions(conversion_filters, ac_filters, stop_cond, verbose=1)
     return rxn_graph
 
@@ -219,7 +223,7 @@ def enumerate_redox_reactions(rxn_graph, max_reduction, max_oxidation, max_abs_c
     charge_iterator = tn.Iterate.ChargeIterator(rxn_graph, type(rxn_graph))
     return charge_iterator.enumerate_charges(max_reduction, 
                                             max_oxidation, 
-                                            [tn.Iterate.charge_filters.MaxAbsCharge(max_abs_charge)])
+                                            [tn.iterate.charge_filters.MaxAbsCharge(max_abs_charge)])
     
 def network_energy_reduction(rxn_graph, specie_df, energy_th):
     # removing "bad species" from graph
@@ -292,18 +296,19 @@ def main():
     with open(os.path.join(os.path.dirname(__file__), "defaults.json"), "r") as f:
         defaults_dict = json.load(f)
     # updating defaults values with user input
-    defaults_dict = recursive_dict_update(defaults_dict, input_d)
+    input_d = recursive_dict_update(defaults_dict, input_d)
     input_d = parse_input_dictionary(input_d)
     parent_results_dir = input_d["system"]["results_dir"]
     # setting up dask client
     dask_cluster = SLURMCluster(**input_d["system"]["dask_client_config"])
     dask_client = Client(dask_cluster)
-    dask_cluster.autoscale(0, 30)
+    dask_cluster.adapt(minimum_jobs=0, maximum_jobs=10)
     # setting up slurm client
     slurm_d = input_d["system"]["slurm_client_config"]
     slurm_client = tx.clients.SlurmClient(slurm_d["cpus_per_task"], slurm_d["memory_per_task"], slurm_d["job_name"])
     # set up reaction graph
     rxn_graph = tn.core.RxnGraph()
+    source_species = []
     rxn_graph.set_source_species(input_d["system"]["reactants"], force=True)
     # start main loop
     while True:
@@ -322,7 +327,10 @@ def main():
             os.mkdir(inputs_dir)
         specie_df_csv_path = os.path.join(parent_results_dir, "specie_df.csv")
         # enumerating elementary reactions
-        rxn_graph = enumerate_elementary_reactions(rxn_graph, input_d["redox_reactions_enumeration"]["ac_filters"], input_d["redox_reactions_enumeration"]["conversion_matrix_filters"]["max_changing_bonds"])
+        rxn_graph = enumerate_elementary_reactions(rxn_graph, input_d["elementary_reactions_enumeration"]
+                                                                        ["ac_matrix_filters"],
+                                                   input_d["elementary_reactions_enumeration"]
+                                                    ["conversion_matrix_filters"]["max_changing_bonds"])
         rxn_graph.save(os.path.join(parent_results_dir, "uncharged_rxn_graph.rxn"))
         # update dataframe with new species
         specie_df = update_df_from_rxn_graph(specie_df, rxn_graph)
@@ -361,6 +369,9 @@ def main():
             rxn_graph = uncharge_graph(charged_rxn_graph, rxn_graph)
             # save new grap
             rxn_graph.save(os.path.join(parent_results_dir, "uncharged_rxn_graph.rxn"))
+
+def test():
+    pars
 
 if __name__ == "__main__":
     main()

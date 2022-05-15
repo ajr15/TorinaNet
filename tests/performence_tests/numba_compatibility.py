@@ -2,9 +2,9 @@ from time import time
 from numba import njit
 import numpy as np
 import sys; sys.path.append("../..")
-from src.Iterate.filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
-import src.Iterate.utils as utils
-from src.Iterate.filters.ac_matrix_filters import max_bonds_per_atom
+from torinanet.iterate.filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
+import torinanet.iterate.utils as utils
+from torinanet.iterate.filters.ac_matrix_filters import max_bonds_per_atom
 
 def compare_jitted_version(f, jitted, *args, **kwargs):
     print("====== WITHOUT JIT ======")
@@ -76,8 +76,8 @@ def generate_conversion_matrices_test():
 
 
 def iterate_over_ac_test():
-    from src.core.Specie import Specie
-    from src.core.AcMatrix.BinaryAcMatrix import BinaryAcMatrix
+    from torinanet.core.Specie import Specie
+    from torinanet.core.AcMatrix.BinaryAcMatrix import BinaryAcMatrix
     ac = BinaryAcMatrix.from_specie(Specie("CCCO")).matrix
     conversion_filters = [OnlySingleBonds(), MaxChangingBonds(4)]
     ac_filters = [utils.max_bonds_per_atom]

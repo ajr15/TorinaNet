@@ -1,7 +1,7 @@
 import sys; sys.path.append("../..")
 import numpy as np
-from src.Iterate.filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds, _TwoSpecieMatrix
-from src.Iterate._jitted_commons import jit_conversion_filters, _apply_filters_on_matrices, _make_multibond_conv_matrices
+from torinanet.iterate.filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds, _TwoSpecieMatrix
+from torinanet.iterate._jitted_commons import jit_conversion_filters, _apply_filters_on_matrices, _make_multibond_conv_matrices
 
 def apply_filters_test():
     f = jit_conversion_filters([MaxChangingBonds(2), OnlySingleBonds()])

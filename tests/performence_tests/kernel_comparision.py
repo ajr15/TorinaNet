@@ -2,10 +2,10 @@ import pandas as pd
 from time import time
 import sys; sys.path.append("../..")
 
-from src.iterate.filters.ac_matrix_filters import MaxBondsPerAtom
-from src.iterate.filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
-from src.iterate.stop_conditions import MaxIterNumber
-from src.core import Specie
+from torinanet.iterate.filters.ac_matrix_filters import MaxBondsPerAtom
+from torinanet.iterate.filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
+from torinanet.iterate.stop_conditions import MaxIterNumber
+from torinanet.core import Specie
 
 
 def iterate_module_standard_test(smiles, rxn_graph_module, iterator_module):
@@ -19,10 +19,10 @@ def iterate_module_standard_test(smiles, rxn_graph_module, iterator_module):
 
 
 def main():
-    import src.iterate
-    src.iterate.kernel = "vanilla"
-    from src.iterate.iterators import Iterator
-    from src.core.RxnGraph import daskRxnGraph
+    import torinanet.iterate
+    torinanet.iterate.kernel = "vanilla"
+    from torinanet.iterate.iterators import Iterator
+    from torinanet.core.RxnGraph import daskRxnGraph
     res = pd.DataFrame()
     for smiles in ["C", "CC"]:
         print(smiles)

@@ -37,7 +37,7 @@ class Specie:
         s = ''
         for k in ['determinant', 'number_of_atoms']:
             if k in self._id_properties.keys():
-                s += "_" + k + "_" + str(self.properties[k])
+                s += "_" + k + "_" + str(self._id_properties[k])
             else:
                 s += k + "_NONE"
         return s

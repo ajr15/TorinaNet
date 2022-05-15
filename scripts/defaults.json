@@ -14,7 +14,7 @@
         },
         "dask_client_config": {
             "cores": 32,
-            "memory": 64,
+            "memory": "64GB",
             "processes": 32
         },
         "connected_molecules": {}

@@ -1,6 +1,5 @@
-from TorinaX.Base.Molecule import Molecule
-from TorinaX.Base.Bond import Bond
-from TorinaX.utils.obUtils import obmol_to_molecule, molecule_to_obmol
+from torinax.base import Molecule, Bond
+from torinax.utils.openbabel import obmol_to_molecule, molecule_to_obmol
 import openbabel as ob
 from typing import Optional
 import numpy as np

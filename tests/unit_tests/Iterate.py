@@ -4,10 +4,10 @@ import networkx as nx
 from matplotlib import pyplot as plt
 import numpy as np
 
-from src.iterate.filters.ac_matrix_filters import MaxBondsPerAtom
-from src.iterate.filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
-from src.iterate.stop_conditions import MaxIterNumber
-from src.core import Specie
+from torinanet.iterate.filters.ac_matrix_filters import MaxBondsPerAtom
+from torinanet.iterate.filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
+from torinanet.iterate.stop_conditions import MaxIterNumber
+from torinanet.core import Specie
 
 
 def make_text_pos(pos, xshift, yshift):
@@ -36,7 +36,7 @@ def visualize_rxn_graph(G):
 
 def iterate_module_standard_test(rxn_graph_module, iterator_module):
     """Standard test for the iterate module. DO NOT CHANGE !"""
-    print("Running standard test for the Iterate module.")
+    print("Running standard test for the iterate module.")
     print("Calculating combinatoric network of H2O molecule dissociation.")
     print("Enumerating...")
     # making the test graph
@@ -69,9 +69,9 @@ def iterate_module_standard_test(rxn_graph_module, iterator_module):
 
 def charge_iterate_module_standard_test(rxn_graph_module, iterator_module):
     """Standard test for the iterate module. DO NOT CHANGE !"""
-    from src.iterate.iterators.ChargeIterator import ChargeIterator
-    from src.iterate.filters.charge_filters import MaxAbsCharge
-    print("Running standard test for the Iterate module.")
+    from torinanet.iterate.iterators.ChargeIterator import ChargeIterator
+    from torinanet.iterate.filters.charge_filters import MaxAbsCharge
+    print("Running standard test for the iterate module.")
     print("Calculating combinatoric network of H2O molecule dissociation.")
     print("Enumerating...")
     # making the test graph
@@ -112,10 +112,10 @@ def charge_iterate_module_standard_test(rxn_graph_module, iterator_module):
     # plt.show()
 
 def main():
-    import src.iterate
-    src.iterate.kernel = "vanilla"
-    from src.iterate.iterators import Iterator
-    from src.core.RxnGraph import RxnGraph
+    import torinanet.iterate
+    torinanet.iterate.kernel = "vanilla"
+    from torinanet.iterate.iterators import Iterator
+    from torinanet.core.RxnGraph import RxnGraph
     charge_iterate_module_standard_test(RxnGraph, Iterator)
 
 if __name__ == '__main__':

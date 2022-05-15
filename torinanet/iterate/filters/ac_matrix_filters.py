@@ -20,7 +20,8 @@ class MaxBondsPerAtom (AcMatrixFilter):
         - dative_bonds_with_dummy_atoms (bool): weather to count bonds with dummy atoms as regular bonds for the filter
         - dative_atoms (list): list of atoms to not count bonds with dummy atoms for"""
 
-    def __init__(self, max_bonds_dict: Optional[dict]=None, dative_bonds_with_dummy_atoms: bool=True, dative_atoms: Optional[list]=None) -> None:
+    def __init__(self, max_bonds_dict: Optional[dict]=None,
+                 dative_bonds_with_dummy_atoms: bool=True, dative_atoms: Optional[list]=None) -> None:
         self.skip_dummies = dative_bonds_with_dummy_atoms
         # setting max bonds per atom
         if not max_bonds_dict is None:
