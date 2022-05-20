@@ -1,17 +1,9 @@
 import sys; sys.path.append("../..")
+import unittest
 import numpy as np
 from matplotlib import pyplot as plt
 import networkx as nx
-from torinanet.core.RxnGraph.RxnGraph import RxnGraph
-from torinanet.core.Specie import Specie
-from torinanet.core.Reaction import Reaction
-from torinanet.core.AcMatrix.BinaryAcMatrix import BinaryAcMatrix
-
-from torinanet.iterate.iterators.VanillaIterator import Iterator
-from torinanet.iterate.filters.ac_matrix_filters import max_bonds_per_atom
-from torinanet.iterate.filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
-from Iterate import visualize_rxn_graph
-
+import torinanet as tn
 
 # - to_netwokx_graph
 # - compare_species
@@ -59,11 +51,7 @@ def add_reaction_test():
         print("=" * 30)
         rxn_graph.add_reaction(rxn)
     print("Number of reactions in graph", len(rxn_graph.reactions))
-    
 
-def to_networkx_graph_test():
-    """function to test the action of \'to_networkx_graph\' method in a reaction graph"""
-    pass
 
 def compare_species_test():
     """function to test the action of \'compare_species\' method in a reaction graph"""

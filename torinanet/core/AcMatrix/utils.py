@@ -65,7 +65,7 @@ def sort_by_diagonal(matrix: np.ndarray) -> np.ndarray:
         pos = i
         # find maximum in unsorted matrix
         for j in range(i + 1, n):
-            if sm > matrix[j, j]:
+            if sm < matrix[j, j]:
                 sm = matrix[j, j]
                 pos = j
         # now switching minimum (i) with maximum (pos)

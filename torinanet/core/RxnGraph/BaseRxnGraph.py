@@ -6,6 +6,7 @@ import networkx as nx
 import json
 from zipfile import ZipFile
 from io import StringIO
+from .. import RxnGraph
 from ..Specie import Specie
 from ..Reaction import Reaction
 from ..AcMatrix.AcMatrix import AcMatrix
@@ -298,6 +299,7 @@ class BaseRxnGraph (ABC):
             d["idx"] = i
             d["ac_mat_str"] = s.ac_matrix._to_str()
             d["sid"] = self.make_unique_id(s)
+            d["identifier"] = s.identifier
             d["charge"] = s.charge
             d.update(s.properties)
             res = res.append(d, ignore_index=True)
@@ -310,12 +312,9 @@ class BaseRxnGraph (ABC):
         for r in self.reactions:
             d = {}
             d.update(r.properties)
-            st = ""
-            for sp in r.reactants:
-                st += species_df.loc[self.make_unique_id(sp), "idx"] + ","
-            st += "="
-            for sp in r.products:
-                st += species_df.loc[self.make_unique_id(sp), "idx"] + ","
+            st = ",".join([str(int(species_df.loc[self.make_unique_id(sp), "idx"])) for sp in r.reactants]) + \
+                    "=" + \
+                    ",".join([str(int(species_df.loc[self.make_unique_id(sp), "idx"])) for sp in r.products])
             d["r_str"] = st
             res = res.append(d, ignore_index=True)
         res = res.set_index("r_str")
@@ -334,7 +333,11 @@ class BaseRxnGraph (ABC):
         rxn_df.to_csv(path_basename + "_reactions")
         # saving source specie unique IDs in a temp file
         with open(path_basename + "_params", "w") as f:
-            d = {"charged": self.use_charge, "source_species": self.source_species}
+            d = {
+                    "charged": self.use_charge, 
+                    "source_species_ids": [self.make_unique_id(s) for s in self.source_species],
+                    "parent_object": type(self).__name__
+                }
             json.dump(d, f)
         # saving reaction graph as archive file
         with ZipFile(path, "w") as f:
@@ -354,35 +357,37 @@ class BaseRxnGraph (ABC):
             - path (str): path to the reaction graph file
         RETURNS:
             (RxnGraph) reaction graph object"""
-        with ZipFile(path, "r") as f:
+        with ZipFile(path, "r") as zipfile:
             # init
-            path_basename = os.path.splitext(path)[0]
+            path_basename = os.path.split(os.path.splitext(path)[0])[-1]
             # setting graph with proper charge reading
-            with StringIO(f.read(path_basename + "_source")) as f:
+            with zipfile.open(path_basename + "_params") as f:
                 d = json.load(f)
-                rxn_graph = cls.__class__(d["charged"])
-                # setting source species
-                species = []
-                for sid in d["source_species"]:
-                    species.append(rxn_graph.get_specie_from_id(sid))
-                rxn_graph.set_source_species(species, force=True)
+                rxn_graph_class = getattr(RxnGraph, d["parent_object"])
+                rxn_graph = rxn_graph_class(d["charged"])
             # reading specie csv from zip to pd.DataFrame
-            species_df = pd.read_csv(StringIO(f.read(path_basename + "_species")))
-            for specie_row in species_df.iterrows():
+            species_df = pd.read_csv(zipfile.open(path_basename + "_species"))
+            for specie_row in species_df.to_dict(orient="records"):
                 # reading specie from ac_matrix string
-                specie_mat = rxn_graph.ac_matrix_type()._from_str(specie_row["ac_mat_str"])
+                specie_mat = rxn_graph.ac_matrix_type()
+                specie_mat._from_str(specie_row["ac_mat_str"])
                 specie = specie_mat.to_specie()
                 # reading charge
                 specie.charge = specie_row["charge"]
                 # adding properties
-                for c in specie_row.index:
+                for c in specie_row.keys():
                     if not c in ["idx", "ac_mat_str"]:
                         specie.properties[c] = specie_row[c]
                 # adding specie to graph
                 rxn_graph.add_specie(specie)
+            # setting source species
+            species = []
+            for sid in d["source_species_ids"]:
+                species.append(rxn_graph.get_specie_from_id(sid))
+            rxn_graph.set_source_species(species, force=True)
             # reading reactions csv from zip to pd.DataFrame
-            reactions_df = pd.read_csv(StringIO(f.read(path_basename + "_reactions")))
-            for rxn_row in reactions_df.iterrows():
+            reactions_df = pd.read_csv(zipfile.open(path_basename + "_reactions"))
+            for rxn_row in reactions_df.to_dict(orient="records"):
                 # reading reaction string
                 r_str = rxn_row["r_str"]
                 reactant_idxs = [int(s) for s in r_str.split("=")[0].split(",") if not len(s) == 0]
@@ -391,7 +396,7 @@ class BaseRxnGraph (ABC):
                 products = [rxn_graph.species[i] for i in product_idxs]
                 rxn = Reaction(reactants, products)
                 # adding properties
-                for c in rxn_row.index:
+                for c in rxn_row.keys():
                     if not c in ["r_str"]:
                         rxn.properties[c] = rxn_row[c]
                 # pushing to graph

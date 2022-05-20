@@ -308,7 +308,6 @@ def main():
     slurm_client = tx.clients.SlurmClient(slurm_d["cpus_per_task"], slurm_d["memory_per_task"], slurm_d["job_name"])
     # set up reaction graph
     rxn_graph = tn.core.RxnGraph()
-    source_species = []
     rxn_graph.set_source_species(input_d["system"]["reactants"], force=True)
     # start main loop
     while True:

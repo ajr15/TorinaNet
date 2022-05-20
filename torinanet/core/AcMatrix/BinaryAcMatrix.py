@@ -9,7 +9,7 @@ from typing import Optional
 class BinaryAcMatrix (AcMatrix):
     """Binary AC matrix object"""
 
-    def __init__(self, matrix):
+    def __init__(self, matrix: Optional[np.ndarray]=None):
         self.matrix = matrix
     
     def get_atom(self, i: int):
@@ -110,7 +110,7 @@ class BinaryAcMatrix (AcMatrix):
         # sorting, to order by atoms and binding sites (integers > 0 and integers =< 0)
         sorted_mat = sort_by_diagonal(self.matrix)
         # finding the bounded part of the matrix
-        bounded_idx = len(sorted_mat) - 1
+        bounded_idx = None
         for i in range(len(sorted_mat)):
             if sorted_mat[i, i] <= 0:
                 bounded_idx = i
@@ -120,6 +120,10 @@ class BinaryAcMatrix (AcMatrix):
         specie = obmol_to_molecule(unbound_mat.to_obmol())
         # making guess geometry for specie
         specie = guess_geometry(specie)
+        # in case no connected molecues found, return specie
+        if not bounded_idx:
+            specie = mm_geometry_optimization(specie, force_field, n_steps)
+            return specie
         # now connecting molecules (supports only one molecule for now)
         for i in range(bounded_idx, len(self.matrix)):
             molecule = connected_molecules[self.matrix[i, i]]["molecule"]

@@ -1,24 +1,33 @@
+from click import Option
 import numpy as np
+from typing import List, Optional
 from .Specie import Specie
 
 class Reaction:
     """Core object to hold information and methods on a single reaction.
     ARGS:
-        - reactants (list of species): a list with reactant species
-        - products (list of species): a list with product species"""
+        - reactants (List[Specie]): a list with reactant species
+        - products (List[Specie]): a list with product species
+        - properties (dict): a dictionary with property names (keys) and values (values"""
 
-    def __init__(self, reactants, products, properties=None):
-        self.reactants = reactants
-        self.products = products
+    def __init__(self, reactants: Optional[List[Specie]]=None, products: Optional[List[Specie]]=None, properties: Optional[dict]=None):
+        if not reactants is None:
+            self.reactants = reactants
+        else:
+            self.reactants = []
+        if not products is None:
+            self.products = products
+        else:
+            self.products = []
         if properties is None:
             self.properties = {}
         else:
             self.properties = properties
         self._id_properties = {
-                "r_ac_det": round(np.prod([np.linalg.det(r.ac_matrix.matrix) for r in reactants])),
-                "p_ac_det": round(np.prod([np.linalg.det(r.ac_matrix.matrix) for r in products])),
-                "r_num": len(reactants),
-                "p_num": len(products)
+                "r_ac_det": round(np.prod([np.linalg.det(r.ac_matrix.matrix) for r in self.reactants])),
+                "p_ac_det": round(np.prod([np.linalg.det(r.ac_matrix.matrix) for r in self.products])),
+                "r_num": len(self.reactants),
+                "p_num": len(self.products)
             }
 
     @staticmethod
