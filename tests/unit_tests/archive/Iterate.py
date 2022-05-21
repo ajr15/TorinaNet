@@ -1,7 +1,8 @@
 import sys
-sys.path.append("../..")
+sys.path.append("/home/shaharpit/Personal/TorinaNet")
+sys.path.append("/home/shaharpit/Personal/TorinaX")
 import networkx as nx
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 import numpy as np
 
 from torinanet.iterate.filters.ac_matrix_filters import MaxBondsPerAtom
@@ -116,7 +117,7 @@ def main():
     torinanet.iterate.kernel = "vanilla"
     from torinanet.iterate.iterators import Iterator
     from torinanet.core.RxnGraph import RxnGraph
-    charge_iterate_module_standard_test(RxnGraph, Iterator)
+    iterate_module_standard_test(RxnGraph, Iterator)
 
 if __name__ == '__main__':
     main()

@@ -219,7 +219,7 @@ class BaseRxnGraph (ABC):
         for rxn in rxns:
             nrxn_graph.add_reaction(rxn)
         # adding reactant species
-        nrxn_graph.set_source_species(self.source_species)
+        nrxn_graph.set_source_species(self.source_species, force=True)
         return nrxn_graph
         
     def remove_specie(self, specie: Specie):

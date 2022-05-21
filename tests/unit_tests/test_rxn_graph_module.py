@@ -1,4 +1,4 @@
-from config import TORINA_NET_DIR, TORINA_X_DIR
+from scripts.config import TORINA_NET_DIR, TORINA_X_DIR
 import sys
 sys.path.append(TORINA_NET_DIR)
 sys.path.append(TORINA_X_DIR)
