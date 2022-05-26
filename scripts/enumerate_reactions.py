@@ -96,17 +96,16 @@ def estimate_charge(ac_string: str, connected_molecules: dict) -> int:
         charges = charge_model.GetFormalCharges()
         return int(sum(charges)) + added_charge
     else:
-        raise OpenbabelChargeError
+        return 0
 
 
 def estimate_charges(rxn_graph, specie_df, connected_molecules_charges):
     # estimate charges of molecules
-    _estimate_charge = da.delayed(pure=True)(estimate_charge)
     # building the charge column & updating specie's df
     for sid in specie_df[specie_df["charge"].isna()].index:
         if pd.isna(specie_df.loc[sid, "charge"]):
             specie_df.loc[sid, "charge"] = estimate_charge(specie_df.loc[sid, "ac_matrix_str"],
-                                                           connected_molecules_charges)
+                                                       connected_molecules_charges)
     # updating charges for reaction graph
     for sid in specie_df.index:
         specie = rxn_graph.get_specie_from_id(sid)
@@ -116,7 +115,9 @@ def estimate_charges(rxn_graph, specie_df, connected_molecules_charges):
 def charge_reduce_graph(rxn_graph):
     """Reduce reactions that violate charge conservation law, used only when estimating charges
     (no charge enumeration)"""
-    res = rxn_graph.copy()
+    # changing use charge attribute to make graph charged
+    res = rxn_graph.copy(use_charge=True)
+    # reverting uncharged graph
     for rxn in rxn_graph.reactions:
         r_charge = sum([s.charge for s in rxn.reactants])
         p_charge = sum([s.charge for s in rxn.products])
@@ -169,9 +170,9 @@ def build_molecules(dask_client, xyz_directory: str, specie_df: pd.DataFrame, co
         specie_df.loc[rec[0], "xyz_path"] = rec[2]
 
 
-def calculate_row_cmd(specie_df, sid, program, input_type, input_file_dir, comp_kwdict, output_extension) -> str:
+def calculate_row_cmd(specie_df, xyz_path, sid, program, input_type, input_file_dir, comp_kwdict, output_extension) -> str:
     """Method to make the shell commands and files required for energy calculation of a specie. returns the command string"""
-    molecule = ob_read_file_to_molecule(specie_df.loc[sid, "xyz_path"])
+    molecule = ob_read_file_to_molecule(xyz_path)
     in_file_path = os.path.join(input_file_dir, sid + "." + input_type.extension)
     specie_df.loc[sid, "input_file"] = in_file_path
     specie_df.loc[sid, "output_file"] = os.path.join(os.path.dirname(input_file_dir),
@@ -188,35 +189,44 @@ def calculate_row_cmd(specie_df, sid, program, input_type, input_file_dir, comp_
     return program.run_command(in_file_path)
     
 
-def calculate_energies(slurm_client, specie_df, input_type, output_ext, input_file_dir, program, comp_kwdict):
+def calculate_energies(slurm_client, uncharged_specie_df, charged_specie_df,
+                       input_type, output_ext, input_file_dir, program, comp_kwdict):
     # find molecules to caculate energies for
-    energy_rows = specie_df[specie_df["built_successfully"] & specie_df["total_energy"].isnull() & specie_df["good_geometry"].isnull()]
+    build_successfully_sids = uncharged_specie_df[uncharged_specie_df["built_successfully"]].index
+    energy_rows = charged_specie_df[charged_specie_df["uncharged_sid"].isin(build_successfully_sids) &
+                                    charged_specie_df["total_energy"].isnull() &
+                                    charged_specie_df["good_geometry"].isnull()]
     # build input files
     cmds = []
     for sid in energy_rows.index:
-        cmds.append(calculate_row_cmd(specie_df, sid, program, input_type, input_file_dir, comp_kwdict, output_ext))
+        xyz_path = uncharged_specie_df.loc[charged_specie_df.loc[sid, "uncharged_sid"], "xyz_path"]
+        cmds.append(calculate_row_cmd(charged_specie_df, xyz_path, sid, program, input_type, input_file_dir, comp_kwdict, output_ext))
     # submit to client
     slurm_client.submit(cmds)
     # wating for task completion
     slurm_client.wait()
 
 
-def read_energy_outputs(specie_df, output_type):
-    energy_rows = specie_df[specie_df["built_successfully"] & specie_df["total_energy"].isnull() & specie_df["good_geometry"].isnull()]
+def read_energy_outputs(uncharged_specie_df, charged_specie_df, output_type):
+    build_successfully_sids = uncharged_specie_df[uncharged_specie_df["built_successfully"]].index
+    energy_rows = charged_specie_df[charged_specie_df["uncharged_sid"].isin(build_successfully_sids) &
+                                    charged_specie_df["total_energy"].isnull() &
+                                    charged_specie_df["good_geometry"].isnull()]
     for sid, outfile in zip(energy_rows.index, energy_rows["output_file"]):
         f = output_type(outfile)
         outdict = f.read_scalar_data()
         if not outdict["finished_normally"]:
-            specie_df.loc[sid, "good_geometry"] = False
+            charged_specie_df.loc[sid, "good_geometry"] = False
         else:
             # checking if optimized to a correct structure
             outspecie = f.read_specie()
-            inspecie = ob_read_file_to_molecule(specie_df.loc[sid, "xyz_path"])
+            xyz_path = uncharged_specie_df.loc[charged_specie_df.loc[sid, "uncharged_sid"], "xyz_path"]
+            inspecie = ob_read_file_to_molecule(xyz_path)
             if not compare_species(inspecie, outspecie):
-                specie_df.loc[sid, "good_geometry"] = False
+                charged_specie_df.loc[sid, "good_geometry"] = False
             else:
-                specie_df.loc[sid, "good_geometry"] = True
-                specie_df.loc[sid, "total_energy"] = outdict["final_energy"]
+                charged_specie_df.loc[sid, "good_geometry"] = True
+                charged_specie_df.loc[sid, "total_energy"] = outdict["final_energy"]
 
 
 def compare_species(specie1, specie2) -> bool:
@@ -258,20 +268,20 @@ def enumerate_redox_reactions(rxn_graph, max_reduction, max_oxidation, max_abs_c
                                             [tn.iterate.charge_filters.MaxAbsCharge(max_abs_charge)])
 
 
-def network_energy_reduction(rxn_graph, specie_df, energy_th):
+def network_energy_reduction(rxn_graph, charged_specie_df, uncharged_specie_df, energy_th):
     # removing "bad species" from graph
-    for sid in specie_df.index:
-        if not specie_df.loc[sid, "good_geometry"]:
+    for sid in charged_specie_df.index:
+        if not charged_specie_df.loc[sid, "good_geometry"] or \
+                not uncharged_specie_df.loc[charged_specie_df.loc[sid, "uncharged_sid"], "built_successfully"]:
             if rxn_graph.has_specie_id(sid):
                 s = rxn_graph.get_specie_from_id(sid)
                 rxn_graph = rxn_graph.remove_specie(s)
     # loading new energies to reaction graph
-    for sid in specie_df.index:
-        energy = specie_df.loc[sid, "total_energy"]
+    for sid in charged_specie_df.index:
+        energy = charged_specie_df.loc[sid, "total_energy"]
         if rxn_graph.has_specie_id(sid):
             specie = rxn_graph.get_specie_from_id(sid)
-            if not "energy" in specie.properties:
-                specie.properties["energy"] = energy
+            specie.properties["energy"] = energy
     # energy reduction
     reduced_graph = reaction_energy_reduction(rxn_graph, energy_th)
     return reduced_graph
@@ -281,8 +291,8 @@ def reaction_energy_reduction(rxn_graph, energy_th):
     """Method to reduce a reaction graph based on reaction energy differences"""
     res = rxn_graph.copy()
     for rxn in rxn_graph.reactions:
+        print([s._get_id_str() for s in rxn.reactants + rxn.products])
         r_energy = calc_reaction_energy(rxn)
-        print(r_energy)
         if r_energy > energy_th:
             res = res.remove_reaction(rxn)
     return res
@@ -294,7 +304,7 @@ def calc_reaction_energy(reaction):
     return products_e - reactants_e
 
 
-def update_df_from_rxn_graph(specie_df: pd.DataFrame, rxn_graph: tn.core.RxnGraph, id_func=None):
+def update_uncharged_df_from_rxn_graph(specie_df: pd.DataFrame, rxn_graph: tn.core.RxnGraph, id_func=None):
     if id_func is None:
         id_func = rxn_graph.make_unique_id
     existing_species = set(specie_df.index)
@@ -306,9 +316,22 @@ def update_df_from_rxn_graph(specie_df: pd.DataFrame, rxn_graph: tn.core.RxnGrap
                                "smiles": specie.ac_matrix.to_specie().identifier},
                               index=[sid])
             new_species = new_species.append(df)
-        elif pd.isna(specie_df.loc[sid, "charge"]):
-            specie_df.loc[sid, "charge"] = specie.charge
     return specie_df.append(new_species)
+
+
+def update_charged_df_from_rxn_graph(charged_specie_df: pd.DataFrame, rxn_graph: tn.core.RxnGraph):
+    charged_id_func = lambda s: s._get_charged_id_str()
+    uncharged_id_func = lambda s: s._get_id_str()
+    existing_species = set(charged_specie_df.index)
+    new_species = pd.DataFrame()
+    for specie in rxn_graph.species:
+        sid = charged_id_func(specie)
+        if not sid in existing_species:
+            df = pd.DataFrame({"uncharged_sid": uncharged_id_func(specie),
+                               "charge": specie.charge},
+                              index=[sid])
+            new_species = new_species.append(df)
+    return charged_specie_df.append(new_species)
 
 
 def main():
@@ -318,14 +341,17 @@ def main():
     input_json = parser.parse_args().input_json
     # some init code
     counter = 1
-    specie_df = pd.DataFrame(columns=[
+    uncharged_specie_df = pd.DataFrame(columns=[
         "smiles",
         "ac_matrix_str",
-        "charge",
         "built_successfully",
+        "xyz_path",
+    ])
+    charged_specie_df = pd.DataFrame(columns=[
+        "uncharged_sid",
+        "charge",
         "good_geometry",
         "total_energy",
-        "xyz_path",
         "input_file",
         "output_file"
     ])
@@ -367,45 +393,58 @@ def main():
         inputs_dir = os.path.join(comp_dirs, "inputs")
         if not os.path.isdir(inputs_dir):
             os.mkdir(inputs_dir)
-        specie_df_csv_path = os.path.join(parent_results_dir, "specie_df.csv")
+        uncharged_specie_df_csv_path = os.path.join(parent_results_dir, "uncharged_specie_df.csv")
+        charged_specie_df_csv_path = os.path.join(parent_results_dir, "charged_specie_df.csv")
         # enumerating elementary reactions
+        print("Enumerating elementary reactions")
         rxn_graph = enumerate_elementary_reactions(rxn_graph, input_d["elementary_reactions_enumeration"]
                                                                         ["ac_matrix_filters"],
                                                    input_d["elementary_reactions_enumeration"]
                                                     ["conversion_matrix_filters"]["max_changing_bonds"])
+        print("done, saving reaction graph data")
         rxn_graph.save(os.path.join(parent_results_dir, "uncharged_rxn_graph.rxn"))
         # update dataframe with new species
-        specie_df = update_df_from_rxn_graph(specie_df, rxn_graph)
+        uncharged_specie_df = update_uncharged_df_from_rxn_graph(uncharged_specie_df, rxn_graph)
         # write dataframe to disk
-        specie_df.to_csv(specie_df_csv_path)
+        uncharged_specie_df.to_csv(uncharged_specie_df_csv_path)
         # if redox reactions are required, enumerate redox
         if input_d["system"]["enumerate_redox_reactions"]:    
             charged_rxn_graph = enumerate_redox_reactions(rxn_graph, **input_d["redox_reactions_enumeration"])
         else:
             # in case no redox reaction enumeration is made, charges are estimated emperically
             # estimating charges
-            estimate_charges(rxn_graph, specie_df, input_d["system"]["connected_molecules"])
+            # adding charge column to uncharged graph
+            uncharged_specie_df["charge"] = [None for _ in range(len(uncharged_specie_df))]
+            print("Estimating charges for graph molecules")
+            estimate_charges(rxn_graph, uncharged_specie_df, input_d["system"]["connected_molecules"])
             # reducing reactions that violate charge conservation law
             charged_rxn_graph = charge_reduce_graph(rxn_graph)
+        print("saving graph and updating")
         # saving charged graph
         charged_rxn_graph.save(os.path.join(parent_results_dir, "charged_rxn_graph.rxn"))
         # update dask dataframe with new species & charges
-        specie_df = update_df_from_rxn_graph(specie_df, charged_rxn_graph, rxn_graph.make_unique_id)
+        charged_specie_df = update_charged_df_from_rxn_graph(charged_specie_df, charged_rxn_graph)
         # write dataframe to disk
-        specie_df.to_csv(specie_df_csv_path)
+        charged_specie_df.to_csv(charged_specie_df_csv_path)
+        print("building molecules")
         # build new molecules
-        build_molecules(dask_client, xyz_dir, specie_df, input_d["system"]["connected_molecules"])
+        build_molecules(dask_client, xyz_dir, uncharged_specie_df, input_d["system"]["connected_molecules"])
         # write dataframe to disk
-        specie_df.to_csv(specie_df_csv_path)
+        uncharged_specie_df.to_csv(uncharged_specie_df_csv_path)
         # submitting calculation
         comp_d = input_d["energy_calculation"]["computation"]
-        calculate_energies(slurm_client, specie_df, comp_d["input_type"], comp_d["output_type"].extension,
+        print("calculating energies")
+        calculate_energies(slurm_client, uncharged_specie_df, charged_specie_df,
+                           comp_d["input_type"], comp_d["output_type"].extension,
                            inputs_dir, comp_d["program"], comp_d["comp_kwargs"])
-        read_energy_outputs(specie_df, comp_d["output_type"])
+        print("reading results")
+        read_energy_outputs(uncharged_specie_df, charged_specie_df, comp_d["output_type"])
         # write dataframe to disk
-        specie_df.to_csv(specie_df_csv_path)
+        charged_specie_df.to_csv(charged_specie_df_csv_path)
         # energy reduction of graph
-        charged_rxn_graph = network_energy_reduction(charged_rxn_graph, specie_df, input_d["energy_calculation"]["energy_th"])
+        print("network energy reduction")
+        charged_rxn_graph = network_energy_reduction(charged_rxn_graph, charged_specie_df, uncharged_specie_df,
+                                                     input_d["energy_calculation"]["energy_th"])
         # save graph
         charged_rxn_graph.save(os.path.join(parent_results_dir, "charged_rxn_graph.rxn"))
         # fallback to uncharged reaction graph
@@ -413,6 +452,9 @@ def main():
             rxn_graph = uncharge_graph(charged_rxn_graph, rxn_graph)
             # save new grap
             rxn_graph.save(os.path.join(parent_results_dir, "uncharged_rxn_graph.rxn"))
+        counter += 1
+        if input_d["system"]["stopping_condition"]["max_iter"] <= counter:
+            break
 
 def test():
     from torinax.io import OrcaOut

@@ -201,7 +201,7 @@ class BaseRxnGraph (ABC):
                 res = res.union(set(nx.algorithms.dfs_tree(network, self.make_unique_id(source)).nodes))
         return res
 
-    def copy(self, keep_ids=None):
+    def copy(self, keep_ids=None, use_charge=False):
         """Method to copy the reaction graph.
         ARGS:
             - keep_ids (List[str] or None): optional to copy the reaction graph only with the given reaction id strings. default=None
@@ -215,7 +215,7 @@ class BaseRxnGraph (ABC):
         else:
             rxns = self.reactions
         # copying reaction graph
-        nrxn_graph = self.__class__()
+        nrxn_graph = self.__class__(use_charge=use_charge)
         for rxn in rxns:
             nrxn_graph.add_reaction(rxn)
         # adding reactant species
