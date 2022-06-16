@@ -23,14 +23,18 @@ class SimpleEnergyReduction:
             prop_func = self.calc_reaction_energy
             analyzer = ShortestPathAnalyzer(rxn_graph, prop_func=prop_func)
             for specie in rxn_graph.species:
-                s_energy = analyzer.get_distance_from_source(specie)
-                if s_energy > self.sp_energy_th:
-                    rxn_graph = rxn_graph.remove_specie(specie)
+                # ensure specie is in graph after some reductions
+                if rxn_graph.has_specie(specie):
+                    s_energy = analyzer.get_distance_from_source(specie)
+                    if s_energy > self.sp_energy_th:
+                        rxn_graph = rxn_graph.remove_specie(specie)
         # analyzing reaction energies
         for rxn in rxn_graph.reactions:
-            r_energy = self.calc_reaction_energy(rxn)
-            if r_energy > self.reaction_energy_th:
-                rxn_graph = rxn_graph.remove_reaction(rxn)
+            # ensure reaction is in graph after some reductions
+            if rxn_graph.has_reaction(rxn):
+                r_energy = self.calc_reaction_energy(rxn)
+                if r_energy > self.reaction_energy_th:
+                    rxn_graph = rxn_graph.remove_reaction(rxn)
         return rxn_graph
 
 class MvcEnergyReduction:

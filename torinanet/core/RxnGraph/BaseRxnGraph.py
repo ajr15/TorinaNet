@@ -243,7 +243,7 @@ class BaseRxnGraph (ABC):
         # running dfs to find other nodes to remove
         keep_ids = self._dfs_remove_id_str(network, specie_id, self.source_species)
         # building a copy of RxnGraph without specie
-        nrxn_graph = self.__class__(self.ac_matrix_type)
+        nrxn_graph = self.__class__(use_charge=self.use_charge)
         for rxn_id in keep_ids:
             if not "number_of_atoms" in rxn_id: # keep_ids has also specie ids in it... this is filtering it. TODO: make it better
                 if rxn_id in rxns_to_remove:
@@ -274,7 +274,7 @@ class BaseRxnGraph (ABC):
         # running dfs to find other nodes to remove
         keep_ids = self._dfs_remove_id_str(network, reaction_id, self.source_species)
         # building a copy of RxnGraph without specie
-        nrxn_graph = self.__class__()
+        nrxn_graph = self.__class__(use_charge=self.use_charge)
         for rxn_id in keep_ids:
             if not "number_of_atoms" in rxn_id: # same problem as in remove_specie..
                 rxn = self.get_reaction_from_id(rxn_id)
@@ -295,7 +295,7 @@ class BaseRxnGraph (ABC):
         """Method to convert all specie data into a pd.DataFrame object. to be used for saving / reading reaction graph files"""
         res = pd.DataFrame()
         for i, s in enumerate(self.species):
-            d = {}
+            d = dict()
             d["idx"] = i
             d["ac_mat_str"] = s.ac_matrix._to_str()
             d["sid"] = self.make_unique_id(s)
@@ -317,14 +317,15 @@ class BaseRxnGraph (ABC):
                     ",".join([str(int(species_df.loc[self.make_unique_id(sp), "idx"])) for sp in r.products])
             d["r_str"] = st
             res = res.append(d, ignore_index=True)
-        res = res.set_index("r_str")
+        if len(self.reactions) > 0:
+            res = res.set_index("r_str")
         return res
 
     def save(self, path) -> None:
         """Save the graph information to a file.
         ARGS:
             - path (str): path to file """
-        path_basename = os.path.splitext(path)[0]
+        path_basename = "rxn_graph"
         # saving specie_df temporarily
         specie_df = self._make_specie_df()
         specie_df.to_csv(path_basename + "_species")
@@ -359,7 +360,7 @@ class BaseRxnGraph (ABC):
             (RxnGraph) reaction graph object"""
         with ZipFile(path, "r") as zipfile:
             # init
-            path_basename = os.path.split(os.path.splitext(path)[0])[-1]
+            path_basename = "rxn_graph"
             # setting graph with proper charge reading
             with zipfile.open(path_basename + "_params") as f:
                 d = json.load(f)
@@ -376,7 +377,7 @@ class BaseRxnGraph (ABC):
                 specie.charge = specie_row["charge"]
                 # adding properties
                 for c in specie_row.keys():
-                    if not c in ["idx", "ac_mat_str"]:
+                    if not c in ["idx", "ac_mat_str", "charge", "sid"]:
                         specie.properties[c] = specie_row[c]
                 # adding specie to graph
                 rxn_graph.add_specie(specie)

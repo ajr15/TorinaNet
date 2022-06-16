@@ -1,4 +1,4 @@
-from ...core.RxnGraph.BaseRxnGraph import BaseRxnGraph
+from ...core.RxnGraph import BaseRxnGraph
 from typing import Callable, Optional
 import numpy as np
 import pandas as pd
@@ -10,9 +10,11 @@ def dijkstra_shortest_path(rxn_graph: BaseRxnGraph, prop_func: Optional[Callable
         prop_func = lambda rxn: 1
     # converting reaction graph to networkx
     G = rxn_graph.to_networkx_graph(use_internal_id=True)
-    source_species = [s._get_id_str() for s in rxn_graph.source_species]
+    source_species = [rxn_graph.make_unique_id(s) for s in rxn_graph.source_species]
     # initializing 
-    specie_df = {s: {"dist": np.inf, "rxn": None, "visited": False} for s in G if type(s) is str} # dictionary for each specie its distance from source and making reaction
+    # dictionary for each specie its distance from source and making reaction
+    specie_df = {rxn_graph.make_unique_id(s):
+                     {"dist": np.inf, "rxn": None, "visited": False} for s in rxn_graph.species}
     for s in source_species:
         specie_df[s] = {"dist": 0, "rxn": None, "visited": False}
     specie_df = pd.DataFrame.from_dict(specie_df, orient="index")
@@ -30,7 +32,8 @@ def dijkstra_shortest_path(rxn_graph: BaseRxnGraph, prop_func: Optional[Callable
                 # make a distance estimate for the reaction's products
                 # the estimate is the maximal distance of the reactant species plus one
                 prod_species = [s for s in G.successors(rxn)]
-                dist_estimate = max([specie_df.loc[s, "dist"] for s in pred_species]) + prop_func(rxn)
+                reaction = rxn_graph.get_reaction_from_id(rxn)
+                dist_estimate = max([specie_df.loc[s, "dist"] for s in pred_species]) + prop_func(reaction)
                 for s in prod_species:
                     # if the distance estimate is less than the known distance, update distance and pred reaction
                     if dist_estimate < specie_df.loc[s, "dist"]:

@@ -9,8 +9,7 @@ import os
 import openbabel as ob
 from copy import copy
 from typing import Optional
-from config import torinax
-from torinax.pipelines.computations import Computation, SqlBase, DaskComputation, SlurmComputation
+from torinax.pipelines.computations import Computation, SqlBase, DaskComputation, SlurmComputation, model_lookup_by_table_name
 from torinax.utils.openbabel import ob_read_file_to_molecule, molecule_to_obmol
 import torinanet as tn
 
@@ -18,7 +17,8 @@ class ReadSpeciesFromUnchargedGraph (Computation):
 
     """Computation to create main specie table in Database and read it from uncharged ReactionGraph object"""
 
-    __name__ = "uncharged_species"
+    tablename = "uncharged_species"
+    name = "read_species_from_uncharged_graph"
     __results_columns__ = {
         "smiles": Column(String(100)),
         "ac_matrix_str": Column(String(500)),
@@ -28,12 +28,12 @@ class ReadSpeciesFromUnchargedGraph (Computation):
         if not rxn_graph:
             # if not provided rxn_graph, tries to read one from dist
             # basing on file path from config table in the SQL database
-            rxn_graph_path = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="uncharged_rxn_graph_path")
+            rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="uncharged_rxn_graph_path").one()[0]
             rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         entries = []
-        for specie in self.rxn_graph.species:
-            sid = self.rxn_graph.make_unique_id(specie)
-            if not db_session.query(exists().where(self.sql_model.id == sid)):
+        for specie in rxn_graph.species:
+            sid = rxn_graph.make_unique_id(specie)
+            if not db_session.query(exists().where(self.sql_model.id == sid)).one()[0]:
                 entry = self.sql_model(
                                         id=sid,
                                         ac_matrix_str=specie.ac_matrix._to_str(),
@@ -46,9 +46,10 @@ class ReadSpeciesFromChargedGraph (Computation):
 
     """Computation to create main specie table in Database and read it from uncharged ReactionGraph object"""
 
-    __name__ = "charged_species"
+    name = "read_species_from_charged_graph"
+    tablename = "charged_species"
     __results_columns__ = {
-        "uncharged_sid": Column(String(100), ForeignKey("uncharged_species")),
+        "uncharged_sid": Column(String(100), ForeignKey("uncharged_species.id")),
         "charge": Column(Integer),
     }
 
@@ -56,12 +57,12 @@ class ReadSpeciesFromChargedGraph (Computation):
         if not rxn_graph:
             # if not provided rxn_graph, tries to read one from dist
             # basing on file path from config table in the SQL database
-            rxn_graph_path = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="charged_rxn_graph_path")
+            rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="charged_rxn_graph_path").one()[0]
             rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         entries = []
-        for specie in self.rxn_graph.species:
-            sid = self.rxn_graph.make_unique_id(specie)
-            if not db_session.query(exists().where(self.sql_model.id == sid)):
+        for specie in rxn_graph.species:
+            sid = rxn_graph.make_unique_id(specie)
+            if not db_session.query(exists().where(self.sql_model.id == sid)).one()[0]:
                 entry = self.sql_model(
                                         id=sid,
                                         uncharged_sid=specie._get_id_str(),
@@ -78,7 +79,8 @@ class OpenbabelBuildError (Exception):
 
 class BuildMolecules (DaskComputation):
 
-    __name__ = "specie_xyz"
+    tablename = "specie_xyz"
+    name = "build_molecules"
     __results_columns__ = {
         "xyz_path": Column(String(100)),
         "successful": Column(Boolean)
@@ -88,39 +90,39 @@ class BuildMolecules (DaskComputation):
         self.connected_molecules = connected_molecules
         super().__init__(dask_client)
 
-    @da.delayed
     @staticmethod
-    def _run(sql_model: SqlBase, ac_string: str, xyz_path: str, sid: str, connected_molecules) -> SqlBase:
+    def _run(ac_string: str, xyz_path: str, sid: str, connected_molecules) -> dict:
         ac_mat = tn.core.BinaryAcMatrix()
         ac_mat._from_str(ac_string)
         try:
             molecule = ac_mat.build_geometry(connected_molecules)
             molecule.save_to_file(xyz_path)
-            return sql_model(id=sid,
-                            xyz_path=xyz_path,
-                            successful=True)
+            m = {"id": sid,
+                    "xyz_path": xyz_path,
+                    "successful": True}
         except OpenbabelBuildError or OpenbabelFfError:
-            return sql_model(id=sid,
-                            successful=False)
+            m = {"id": sid,
+                 "successful": False}
+        return m
 
     def make_futures(self, db_session):
-        specie_table = db_session.metadata.tables[ReadSpeciesFromUnchargedGraph.__name__]
+        specie_table = model_lookup_by_table_name(ReadSpeciesFromUnchargedGraph.tablename)
         # getting all sids for building
         # these sids are for species who were not built yet (id doesnt exist in specie_xyz table)
         sids = db_session.query(specie_table.id).except_(db_session.query(self.sql_model.id)).all()
-        parent_res_dir = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="results_dir")
-        iter_no = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="macro_iteration")
+        parent_res_dir = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="results_dir").one()[0]
+        iter_no = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
         xyz_dir = os.path.join(parent_res_dir, iter_no, "xyz")
         if not os.path.isdir(xyz_dir):
             os.mkdir(xyz_dir)
         # making list of futures for calculation
         futures = []
         for sid in sids:
-            ac_str = db_session.query(specie_table).filter_by(id=sid).first().ac_matrix_str
-            future = self._run(
-                self.sql_model, # sql model
+            sid = sid[0] # artifact of SQL query - returns a tuple that must be reduced
+            ac_str = db_session.query(specie_table.ac_matrix_str).filter_by(id=sid).one()[0]
+            future = self.client.submit(self._run,
                 ac_str,
-                os.path.join(self.xyz_dir, str(sid)),
+                os.path.join(xyz_dir, str(sid) + ".xyz"),
                 sid,
                 self.connected_molecules
             )
@@ -129,14 +131,15 @@ class BuildMolecules (DaskComputation):
 
 
 class ExternalCalculation (SlurmComputation):
-    
+
+    name = "calculate_energies"
     __results_columns__ = {
         "input_path": Column(String(100)),
         "output_path": Column(String(100)),
     }
     
-    def __init__(self, slurm_client, program, input_type, comp_kwdict, output_extension, name: str="energy_outputs"):
-        self.__name__ = name
+    def __init__(self, slurm_client, program, input_type, comp_kwdict, output_extension, name: str="comp_outputs"):
+        self.tablename = name
         self.program = program
         self.input_type = input_type
         self.comp_kwdict = comp_kwdict
@@ -146,12 +149,12 @@ class ExternalCalculation (SlurmComputation):
     def single_calc(self, xyz_path, comp_dir, sid, charge):
         """Method to make an sql entry and command line string for single SLURM run"""
         molecule = ob_read_file_to_molecule(xyz_path)
-        in_file_path = os.path.join(self.comp_dir, "inputs", sid + "." + self.input_type.extension)
+        in_file_path = os.path.join(comp_dir, "inputs", sid + "." + self.input_type.extension)
         entry = self.sql_model(id=sid,
                                 input_path=in_file_path,
                                 output_path=os.path.join(
                                         comp_dir,
-                                        sid + "_out", sid + "." + self.output_extension)
+                                        sid + "_out", sid + "." + self.output_ext)
                                         )
         # calculating number of electrons
         n_elec = 0
@@ -166,25 +169,26 @@ class ExternalCalculation (SlurmComputation):
 
     def make_cmd_list(self, db_session):
         # setting up appropriate directory for computation results
-        iter_count = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="macro_iteration")
-        res_dir = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="results_dir")
-        comp_dir = os.path.join(res_dir, iter_count, self.__name__)
+        iter_count = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
+        res_dir = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="results_dir").one()[0]
+        comp_dir = os.path.join(res_dir, iter_count, self.tablename)
         if not os.path.isdir(comp_dir):
             os.mkdir(comp_dir)
         input_dir = os.path.join(comp_dir, "inputs")
         if not os.path.isdir(input_dir):
             os.mkdir(input_dir)
         # now continuing to main computation
-        specie_table = db_session.metadata.tables[BuildMolecules.__name__]
-        charge_table = db_session.metadata.tables[ReadSpeciesFromChargedGraph.__name__]
+        specie_table = model_lookup_by_table_name(BuildMolecules.tablename)
+        charge_table = model_lookup_by_table_name(ReadSpeciesFromChargedGraph.tablename)
         sids = db_session.query(charge_table.id).except_(db_session.query(self.sql_model.id)).all()
         entries = []
         cmds = []
         for sid in sids:
+            sid = sid[0] # artifact of SQL query results - returns tuples
             uncharged_sid = db_session.query(charge_table).filter_by(id=sid).first().uncharged_sid
             xyz = db_session.query(specie_table).filter_by(id=uncharged_sid).first().xyz_path
             charge = db_session.query(charge_table).filter_by(id=sid).first().charge
-            entry, cmd_str = self.single_calc(xyz, sid, charge)
+            entry, cmd_str = self.single_calc(xyz, comp_dir, sid, charge)
             entries.append(entry)
             cmds.append(cmd_str)
         return entries, cmds
@@ -195,11 +199,12 @@ class EstimateCharges (Computation):
 
     pass
 
-class ReadCompOutput (Computation):
+class ReadCompOutput (DaskComputation):
 
     """Method to parse data generated by external programs"""
-    
-    __name__ = "energy_outputs"
+
+    name = "read_energies"
+    tablename = "energy_outputs"
     __results_columns__ = {
         "energy": Column(String(100)),
         "good_geometry": Column(Boolean),
@@ -228,34 +233,39 @@ class ReadCompOutput (Computation):
         return ac1 == ac2
 
 
-    def _run(self, sid: str, output_path: str, xyz_path: str) -> SqlBase:
+    @classmethod
+    def _run(cls, output_type, sid: str, output_path: str, xyz_path: str) -> dict:
         # reading molecule from xyz file
         original_mol = ob_read_file_to_molecule(xyz_path)
         # reading output
-        output = self.output_type(output_path)
+        output = output_type(output_path)
         out_mol = output.read_specie()
         out_d = output.read_scalar_data()
         # returning SQL entry with results
-        return self.sql_model(
-            id=sid,
-            energy=out_d["final_energy"],
-            successful=out_d["finished_normally"],
-            good_geometry=self.compare_species(original_mol, out_mol)
-        )
+        return {
+            "id": sid,
+            "energy": out_d["final_energy"],
+            "successful": out_d["finished_normally"],
+            "good_geometry": cls.compare_species(original_mol, out_mol)
+        }
 
 
     def make_futures(self, db_session):
-        comp_table = db_session.metadata.tables[self.comp_output_table_name]
-        build_table = db_session.metadata.tables[BuildMolecules.__name__]
+        comp_table = model_lookup_by_table_name(self.comp_output_table_name)
+        build_table = model_lookup_by_table_name(BuildMolecules.tablename)
         # getting all sids for building
         # these sids are for species who were not built yet (id doesnt exist in specie_xyz table)
         sids = db_session.query(comp_table.id).except_(db_session.query(self.sql_model.id)).all()
         # making list of futures for calculation
         futures = []
         for sid in sids:
-            xyz_path = db_session.query(build_table.xyz_path).filter_by(id=sid).first()
-            output_path = db_session.query(comp_table.output_path).filter_by(id=sid).first()
-            future = self.dask_client.submit(self._run,
+            sid = sid[0] # artifact of SQL query - returns tuple
+            uncharged_sid = sid.split("charge")[0][:-1] # MUST "uncharge" the ID, for querying the build table
+                                                        # TODO: find a better way to do it
+            xyz_path = db_session.query(build_table.xyz_path).filter_by(id=uncharged_sid).one()[0]
+            output_path = db_session.query(comp_table.output_path).filter_by(id=sid).one()[0]
+            future = self.client.submit(self._run,
+                self.output_type,
                 sid,
                 output_path,
                 xyz_path
@@ -270,7 +280,8 @@ class ReduceGraphByCriterion (Computation):
         - target_graph (str): string for type of graph (charged or uncharged)
         - sid_query_func (callable): function that takes the db_session and returns the specie IDs to be removed"""
 
-    __name__ = None
+    tablename = None
+    name = "remove_bad_species"
     
     def __init__(self, target_graph: str, sid_query_func: callable, local_file_name: Optional[str]=None) -> None:
         if not target_graph.lower() in ["charged", "uncharged"]:
@@ -282,12 +293,13 @@ class ReduceGraphByCriterion (Computation):
 
     def execute(self, db_session) -> List[SqlBase]:
         # reading reaction graph path
-        rxn_graph_path = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="{}_rxn_graph_path".format(self.target_graph))
+        rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="{}_rxn_graph_path".format(self.target_graph)).one()[0]
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         # finding specie IDs to remove
         sids = self.sid_query_func(db_session)
         # removing IDs from graph
         for sid in sids:
+            sid = sid[0] # artifact of SQL query - returns tuple
             if rxn_graph.has_specie_id(sid):
                 specie = rxn_graph.get_specie_from_id(sid)
                 rxn_graph = rxn_graph.remove_specie(specie)
@@ -295,19 +307,24 @@ class ReduceGraphByCriterion (Computation):
         rxn_graph.save(rxn_graph_path)
         # if a local copy is desired, making one
         if self.local_file_name:
-            iter_count = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="macro_iteration")
-            res_dir = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="results_dir")
+            iter_count = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
+            res_dir = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="results_dir").one()[0]
             local_file = os.path.join(res_dir, iter_count, self.local_file_name)
             shutil.copyfile(local_file, rxn_graph_path)
         return []
 
+
 class ReduceGraphByEnergyReducer (Computation):
 
     """Method to reduce a reaction graph by an energy reducer (in torinanet.analyze.network_reduction)."""
+
+    name = "graph_energy_reduction"
+    tablename = None
     
-    __name__ = None
-    
-    def __init__(self, reducer, local_file_name: Optional[str]=None) -> None:
+    def __init__(self, reducer, target_graph: str, local_file_name: Optional[str]=None) -> None:
+        if not target_graph.lower() in ["charged", "uncharged"]:
+            raise ValueError("invalid target graph '{}'. allowed values 'charged' and 'uncharged'".format(target_graph))
+        self.target_graph = target_graph.lower()
         self.reducer = reducer
         self.local_file_name = local_file_name
         super().__init__()
@@ -315,23 +332,24 @@ class ReduceGraphByEnergyReducer (Computation):
     @staticmethod
     def update_specie_energies(db_session, rxn_graph) -> tn.core.RxnGraph:
         """Method to update the species energies in the reaction graph from the computation"""
-        comp_out = db_session.metadata.tables[ReadCompOutput.__name__]
+        comp_out = model_lookup_by_table_name(ReadCompOutput.tablename)
         sids_energies = db_session.query(comp_out.id, comp_out.energy).filter(
                         comp_out.good_geometry & comp_out.successful).all()
         for sid, energy in sids_energies:
             if rxn_graph.has_specie_id(sid):
                 specie = rxn_graph.get_specie_from_id(sid)
-                specie.properties["energy"] = energy
+                specie.properties["energy"] = float(energy)
         return rxn_graph
 
     @staticmethod
     def reduce_bad_geometries(db_session, rxn_graph) -> tn.core.RxnGraph:
         """Method to reduce species with bad geometries from graph"""
-        comp_out = db_session.metadata.tables[ReadCompOutput.__name__]
+        comp_out = model_lookup_by_table_name(ReadCompOutput.tablename)
         sids = db_session.query(comp_out.id).filter(
                         ~(comp_out.good_geometry & comp_out.successful)).all()
         # removing IDs from graph
         for sid in sids:
+            sid = sid[0]
             if rxn_graph.has_specie_id(sid):
                 specie = rxn_graph.get_specie_from_id(sid)
                 rxn_graph = rxn_graph.remove_specie(specie)
@@ -339,7 +357,7 @@ class ReduceGraphByEnergyReducer (Computation):
 
     def execute(self, db_session) -> List[SqlBase]:
         # reading reaction graph path
-        rxn_graph_path = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="{}_rxn_graph_path".format(self.target_graph))
+        rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="{}_rxn_graph_path".format(self.target_graph)).one()[0]
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         # removing species with bad geometry or failed computation
         rxn_graph = self.reduce_bad_geometries(db_session, rxn_graph)
@@ -349,18 +367,19 @@ class ReduceGraphByEnergyReducer (Computation):
         rxn_graph = self.reducer.apply(rxn_graph)
         rxn_graph.save(rxn_graph_path)
         if self.local_file_name:
-            iter_count = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="macro_iteration")
-            res_dir = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="results_dir")
+            iter_count = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
+            res_dir = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="results_dir").one()[0]
             local_file = os.path.join(res_dir, iter_count, self.local_file_name)
-            shutil.copyfile(local_file, rxn_graph_path)
-
+            shutil.copyfile(rxn_graph_path, local_file)
+        return []
 
 
 class ElementaryReactionEnumeration (Computation):
 
     """Method to enumerate elementary reactions"""
 
-    __name__ = None
+    name = "elemntary_reaction_enumeration"
+    tablename = None
     
     def __init__(self, 
                     conversion_filters: List[tn.iterate.conversion_matrix_filters.ConvFilter],
@@ -372,7 +391,7 @@ class ElementaryReactionEnumeration (Computation):
 
     def execute(self, db_session) -> List[SqlBase]:
         # reading reaction graph path
-        rxn_graph_path = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="uncharged_rxn_graph_path")
+        rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="uncharged_rxn_graph_path").one()[0]
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         # setting up & enumerating
         stop_cond = tn.iterate.stop_conditions.MaxIterNumber(1)
@@ -384,8 +403,8 @@ class ElementaryReactionEnumeration (Computation):
         # updating SQL
         entries = self.update_species_comp.execute(db_session, rxn_graph)
         # saving graph to disk
-        iter_count = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="macro_iteration")
-        res_dir = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="results_dir")
+        iter_count = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
+        res_dir = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="results_dir").one()[0]
         local_file = os.path.join(res_dir, iter_count, "crud_uncharged.rxn")
         rxn_graph.save(local_file)
         shutil.copyfile(local_file, rxn_graph_path)
@@ -396,7 +415,8 @@ class RedoxReactionEnumeration (Computation):
 
     """Method to enumerate possible redox reactions in network"""
 
-    __name__ = None
+    name = "redox_reaction_enumeration"
+    tablename = None
     
     def __init__(self, 
                     max_reduction,
@@ -409,8 +429,8 @@ class RedoxReactionEnumeration (Computation):
         super().__init__()
 
     def execute(self, db_session) -> List[SqlBase]:
-        # reading reaction graph path
-        rxn_graph_path = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="charged_rxn_graph_path")
+        # reading uncharged reaction graph path
+        rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="uncharged_rxn_graph_path").one()[0]
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         # setting up & enumerating
         charge_iterator = tn.iterate.ChargeIterator(rxn_graph, type(rxn_graph))
@@ -420,10 +440,12 @@ class RedoxReactionEnumeration (Computation):
         # updating SQL
         entries = self.update_species_comp.execute(db_session, charged_graph)
         # saving graph to disk
-        iter_count = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="macro_iteration")
-        res_dir = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="results_dir")
+        iter_count = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
+        res_dir = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="results_dir").one()[0]
         local_file = os.path.join(res_dir, iter_count, "crud_charged.rxn")
         charged_graph.save(local_file)
+        # saving charged graph in separate file
+        rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="charged_rxn_graph_path").one()[0]
         shutil.copyfile(local_file, rxn_graph_path)
         return entries
 
@@ -432,16 +454,17 @@ class UnchargeGraph (Computation):
 
     """Method to uncharge a charged reaction graph"""
 
-    __name__ == None
+    name = "uncharging graph"
+    tablename = None
 
     def execute(self, db_session) -> List[SqlBase]:
         # reading reaction graph path
-        uncharged_rxn_graph_path = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="uncharged_rxn_graph_path")
+        uncharged_rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="uncharged_rxn_graph_path").one()[0]
         uncharged_rxn_graph = tn.core.RxnGraph.from_file(uncharged_rxn_graph_path)
-        charged_rxn_graph_path = db_session.query(db_session.metadata.tables["config"].value).filter_by(name="charged_rxn_graph_path")
+        charged_rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="charged_rxn_graph_path").one()[0]
         charged_rxn_graph = tn.core.RxnGraph.from_file(charged_rxn_graph_path)
         # "uncharging" charged graph
-        rids = set([uncharged_rxn_graph.make_unique_id(r) for r in charged_rxn_graph])
+        rids = set([uncharged_rxn_graph.make_unique_id(r) for r in charged_rxn_graph.reactions])
         uncharged_rxn_graph = uncharged_rxn_graph.copy(keep_ids=rids)  
         # saving new reaction graph
         uncharged_rxn_graph.save(uncharged_rxn_graph_path)

@@ -1,1 +1,1 @@
-from ShortestPathAnalyzer import ShortestPathAnalyzer
+from .ShortestPathAnalyzer import ShortestPathAnalyzer

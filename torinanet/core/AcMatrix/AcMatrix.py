@@ -95,3 +95,10 @@ class AcMatrix (ABC):
         RETURNS:
             (TorinaX.Specie) TorinaX structure or molecule"""
         raise NotImplementedError("Cannot build geometry for the required AcMatrix object")
+
+    def __eq__(self, other):
+        det1 = np.linalg.det(self.matrix)
+        det2 = np.linalg.det(other.matrix)
+        l1 = len(self.matrix)
+        l2 = len(other.matrix)
+        return det1 == det2 and l1 == l2
