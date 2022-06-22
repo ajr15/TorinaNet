@@ -4,7 +4,6 @@ import shutil
 from sqlalchemy import Column, ForeignKey, Integer, String, Boolean
 from sqlalchemy.sql import exists
 from typing import List
-import dask as da
 import os
 import openbabel as ob
 from copy import copy
@@ -91,7 +90,7 @@ class BuildMolecules (DaskComputation):
         super().__init__(dask_client)
 
     @staticmethod
-    def _run(ac_string: str, xyz_path: str, sid: str, connected_molecules) -> dict:
+    def run(ac_string: str, xyz_path: str, sid: str, connected_molecules) -> dict:
         ac_mat = tn.core.BinaryAcMatrix()
         ac_mat._from_str(ac_string)
         try:
@@ -120,7 +119,7 @@ class BuildMolecules (DaskComputation):
         for sid in sids:
             sid = sid[0] # artifact of SQL query - returns a tuple that must be reduced
             ac_str = db_session.query(specie_table.ac_matrix_str).filter_by(id=sid).one()[0]
-            future = self.client.submit(self._run,
+            future = self.client.submit(self.run,
                 ac_str,
                 os.path.join(xyz_dir, str(sid) + ".xyz"),
                 sid,
@@ -136,14 +135,18 @@ class ExternalCalculation (SlurmComputation):
     __results_columns__ = {
         "input_path": Column(String(100)),
         "output_path": Column(String(100)),
+        "__table_args__": {'extend_existing': True}
+
     }
     
-    def __init__(self, slurm_client, program, input_type, comp_kwdict, output_extension, name: str="comp_outputs"):
+    def __init__(self, slurm_client, program, input_type, comp_kwdict, output_extension, name: str="comp_outputs",
+                 specie_tablename: Optional[str]=None):
         self.tablename = name
         self.program = program
         self.input_type = input_type
         self.comp_kwdict = comp_kwdict
         self.output_ext = output_extension
+        self.specie_tablename = specie_tablename
         super().__init__(slurm_client)
 
     def single_calc(self, xyz_path, comp_dir, sid, charge):
@@ -180,7 +183,11 @@ class ExternalCalculation (SlurmComputation):
         # now continuing to main computation
         specie_table = model_lookup_by_table_name(BuildMolecules.tablename)
         charge_table = model_lookup_by_table_name(ReadSpeciesFromChargedGraph.tablename)
-        sids = db_session.query(charge_table.id).except_(db_session.query(self.sql_model.id)).all()
+        if not self.specie_tablename:
+            sids = db_session.query(charge_table.id).except_(db_session.query(self.sql_model.id)).all()
+        else:
+            custom_table = model_lookup_by_table_name(self.specie_tablename)
+            sids = db_session.query(custom_table.id).except_(db_session.query(self.sql_model.id)).all()
         entries = []
         cmds = []
         for sid in sids:
@@ -208,7 +215,8 @@ class ReadCompOutput (DaskComputation):
     __results_columns__ = {
         "energy": Column(String(100)),
         "good_geometry": Column(Boolean),
-        "successful": Column(Boolean)
+        "successful": Column(Boolean),
+        "__table_args__": {'extend_existing': True}
     }
 
     def __init__(self, dask_client, output_type, comp_output_table_name: str="comp_outputs"):
@@ -234,7 +242,7 @@ class ReadCompOutput (DaskComputation):
 
 
     @classmethod
-    def _run(cls, output_type, sid: str, output_path: str, xyz_path: str) -> dict:
+    def run(cls, output_type, sid: str, output_path: str, xyz_path: str) -> dict:
         # reading molecule from xyz file
         original_mol = ob_read_file_to_molecule(xyz_path)
         # reading output
@@ -264,7 +272,7 @@ class ReadCompOutput (DaskComputation):
                                                         # TODO: find a better way to do it
             xyz_path = db_session.query(build_table.xyz_path).filter_by(id=uncharged_sid).one()[0]
             output_path = db_session.query(comp_table.output_path).filter_by(id=sid).one()[0]
-            future = self.client.submit(self._run,
+            future = self.client.submit(self.run,
                 self.output_type,
                 sid,
                 output_path,
@@ -470,3 +478,44 @@ class UnchargeGraph (Computation):
         uncharged_rxn_graph.save(uncharged_rxn_graph_path)
         return []
 
+class FindMvc (Computation):
+
+    """Computation to find MVC species in graph"""
+
+    name = "find_mvc"
+    tablename = "mvc_species"
+    __results_columns__ = {
+        "iteration": Column(Integer),
+    }
+
+    def __init__(self, n_trails: int=10):
+        self.n_trails = n_trails
+        super().__init__()
+
+    def execute(self, db_session) -> List[SqlBase]:
+        # reading graph
+        rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="charged_rxn_graph_path").one()[0]
+        rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
+        # getting all "covered" species - species with known product energies
+        # covered_species = [s[0] for s in db_session.query(model_lookup_by_table_name("energy_outputs").id).all()]
+        covered_species = [rxn_graph.make_unique_id(s) for s in rxn_graph.species if s.properties["visited"]]
+        # running MVC finder for n trails
+        mvc = []
+        min_mvc_l = len(rxn_graph.species)
+        for _ in range(self.n_trails):
+            degree_mvc = tn.analyze.algorithms.greedy_mvc(rxn_graph, "degree", only_products=True,
+                                                          covered_species=covered_species)
+            percolation_mvc = tn.analyze.algorithms.greedy_mvc(rxn_graph, "percolation", only_products=True,
+                                                          covered_species=covered_species)
+            candidate = degree_mvc if len(degree_mvc) < len(percolation_mvc) else percolation_mvc
+            if len(candidate) < min_mvc_l:
+                mvc = candidate
+                min_mvc_l = len(mvc)
+        # inserting MVC data to database
+        iter_count = \
+        db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
+        entries = []
+        for specie in mvc:
+            sid = rxn_graph.make_unique_id(specie)
+            entries.append(self.sql_model(id=sid, iteration=iter_count))
+        return entries

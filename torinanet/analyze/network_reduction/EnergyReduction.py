@@ -1,7 +1,7 @@
 from typing import Optional
 from ..algorithms.ShortestPathAnalyzer import ShortestPathAnalyzer
 
-class SimpleEnergyReduction:
+class SimpleEnergyReduction: 
 
     """Class that implements simple reaction energy difference reduction"""
 
@@ -37,12 +37,21 @@ class SimpleEnergyReduction:
                     rxn_graph = rxn_graph.remove_reaction(rxn)
         return rxn_graph
 
-class MvcEnergyReduction:
+class MinEnergyReduction:
 
-    """Method to reduce a graph based on energies of MVC species"""
+    """Method to reduce a graph based on minimal specie energy"""
 
-    def __init__(self, reaction_energy_th: float, specie_energy_th: float, use_shortest_paths=False, sp_energy_th: float=20):
-        pass
+    def __init__(self, reaction_energy_th: float,
+                 min_electron_energy: float,
+                 use_shortest_paths=False,
+                 sp_energy_th: float=20):
+        self.min_electron_energy = min_electron_energy
+        self.reducer = SimpleEnergyReduction(reaction_energy_th, use_shortest_paths, sp_energy_th)
 
     def apply(self, rxn_graph):
-        pass
+        # for every specie in the graph, if it doesn't have energy data - put the minimum value
+        for specie in rxn_graph.species:
+            if not "energy" in specie.properties:
+                n_electrons = sum(specie.ac_matrix.get_atoms())
+                specie.properties["energy"] = self.min_electron_energy * n_electrons
+        return self.reducer.apply(rxn_graph)
