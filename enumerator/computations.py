@@ -2,9 +2,10 @@
 # upgraded version of the enumerate reactions script
 import shutil
 from sqlalchemy import Column, ForeignKey, Integer, String, Boolean
-from sqlalchemy.sql import exists
+from sqlalchemy.sql import exists, select
 from typing import List
 import os
+import dask as da
 import openbabel as ob
 from copy import copy
 from typing import Optional
@@ -50,6 +51,7 @@ class ReadSpeciesFromChargedGraph (Computation):
     __results_columns__ = {
         "uncharged_sid": Column(String(100), ForeignKey("uncharged_species.id")),
         "charge": Column(Integer),
+        "relevant": Column(Boolean, default=True)
     }
 
     def execute(self, db_session, rxn_graph=None) -> List[SqlBase]:
@@ -59,6 +61,17 @@ class ReadSpeciesFromChargedGraph (Computation):
             rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="charged_rxn_graph_path").one()[0]
             rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         entries = []
+        # updating significance of existing species
+        existing_sids = db_session.query(self.sql_model.id).all()
+        for sid in existing_sids:
+            specie = db_session.execute(select(self.sql_model).filter_by(id=sid[0])).scalar_one()
+            if rxn_graph.has_specie_id(sid[0]):
+                specie.relevant = True
+            else:
+                # updating relevence = False
+                specie.relevant = False
+        db_session.commit()
+        # adding new species to table
         for specie in rxn_graph.species:
             sid = rxn_graph.make_unique_id(specie)
             if not db_session.query(exists().where(self.sql_model.id == sid)).one()[0]:
@@ -66,7 +79,8 @@ class ReadSpeciesFromChargedGraph (Computation):
                                         id=sid,
                                         uncharged_sid=specie._get_id_str(),
                                         charge=specie.charge,
-                                        )
+                                        relevant=True
+                                        ) 
                 entries.append(entry)
         return entries
 
@@ -88,8 +102,9 @@ class BuildMolecules (DaskComputation):
     def __init__(self, dask_client, connected_molecules):
         self.connected_molecules = connected_molecules
         super().__init__(dask_client)
-
+    
     @staticmethod
+    @da.delayed(pure=False)
     def run(ac_string: str, xyz_path: str, sid: str, connected_molecules) -> dict:
         ac_mat = tn.core.BinaryAcMatrix()
         ac_mat._from_str(ac_string)
@@ -119,7 +134,7 @@ class BuildMolecules (DaskComputation):
         for sid in sids:
             sid = sid[0] # artifact of SQL query - returns a tuple that must be reduced
             ac_str = db_session.query(specie_table.ac_matrix_str).filter_by(id=sid).one()[0]
-            future = self.client.submit(self.run,
+            future = self.run(
                 ac_str,
                 os.path.join(xyz_dir, str(sid) + ".xyz"),
                 sid,
@@ -184,7 +199,7 @@ class ExternalCalculation (SlurmComputation):
         specie_table = model_lookup_by_table_name(BuildMolecules.tablename)
         charge_table = model_lookup_by_table_name(ReadSpeciesFromChargedGraph.tablename)
         if not self.specie_tablename:
-            sids = db_session.query(charge_table.id).except_(db_session.query(self.sql_model.id)).all()
+            sids = db_session.query(charge_table.id).filter_by(relevant=True).except_(db_session.query(self.sql_model.id)).all()
         else:
             custom_table = model_lookup_by_table_name(self.specie_tablename)
             sids = db_session.query(custom_table.id).except_(db_session.query(self.sql_model.id)).all()
@@ -192,8 +207,8 @@ class ExternalCalculation (SlurmComputation):
         cmds = []
         for sid in sids:
             sid = sid[0] # artifact of SQL query results - returns tuples
-            uncharged_sid = db_session.query(charge_table).filter_by(id=sid).first().uncharged_sid
-            xyz = db_session.query(specie_table).filter_by(id=uncharged_sid).first().xyz_path
+            uncharged_sid = db_session.query(charge_table.uncharged_sid).filter_by(id=sid).one()[0]
+            xyz = db_session.query(specie_table.xyz_path).filter_by(id=uncharged_sid).one()[0]
             charge = db_session.query(charge_table).filter_by(id=sid).first().charge
             entry, cmd_str = self.single_calc(xyz, comp_dir, sid, charge)
             entries.append(entry)
@@ -240,8 +255,8 @@ class ReadCompOutput (DaskComputation):
         # if ac matrices are equal -> structures are equal
         return ac1 == ac2
 
-
     @classmethod
+    @da.delayed(pure=True)
     def run(cls, output_type, sid: str, output_path: str, xyz_path: str) -> dict:
         # reading molecule from xyz file
         original_mol = ob_read_file_to_molecule(xyz_path)
@@ -272,7 +287,7 @@ class ReadCompOutput (DaskComputation):
                                                         # TODO: find a better way to do it
             xyz_path = db_session.query(build_table.xyz_path).filter_by(id=uncharged_sid).one()[0]
             output_path = db_session.query(comp_table.output_path).filter_by(id=sid).one()[0]
-            future = self.client.submit(self.run,
+            future = self.run(
                 self.output_type,
                 sid,
                 output_path,
@@ -297,12 +312,20 @@ class ReduceGraphByCriterion (Computation):
         self.target_graph = target_graph.lower()
         self.sid_query_func = sid_query_func
         self.local_file_name = local_file_name
+        if self.target_graph == "charged":
+            self.update_species_comp = ReadSpeciesFromChargedGraph()
+        else:
+            self.update_species_comp = ReadSpeciesFromUnchargedGraph()
+            
         super().__init__()
 
     def execute(self, db_session) -> List[SqlBase]:
         # reading reaction graph path
         rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="{}_rxn_graph_path".format(self.target_graph)).one()[0]
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
+        print("BEFORE REDUCTION")
+        print("n species =", len(rxn_graph.species))
+        print("n reactions =", len(rxn_graph.reactions))
         # finding specie IDs to remove
         sids = self.sid_query_func(db_session)
         # removing IDs from graph
@@ -313,13 +336,17 @@ class ReduceGraphByCriterion (Computation):
                 rxn_graph = rxn_graph.remove_specie(specie)
         # saving reduced graph
         rxn_graph.save(rxn_graph_path)
+        print("AFTER REDUCTION")
+        print("n species =", len(rxn_graph.species))
+        print("n reactions =", len(rxn_graph.reactions))
         # if a local copy is desired, making one
         if self.local_file_name:
             iter_count = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
             res_dir = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="results_dir").one()[0]
             local_file = os.path.join(res_dir, iter_count, self.local_file_name)
             shutil.copyfile(local_file, rxn_graph_path)
-        return []
+        # return updated relevance terms for the species
+        return self.update_species_comp.execute(db_session, rxn_graph)
 
 
 class ReduceGraphByEnergyReducer (Computation):
@@ -335,6 +362,10 @@ class ReduceGraphByEnergyReducer (Computation):
         self.target_graph = target_graph.lower()
         self.reducer = reducer
         self.local_file_name = local_file_name
+        if self.target_graph == "charged":
+            self.update_species_comp = ReadSpeciesFromChargedGraph()
+        else:
+            self.update_species_comp = ReadSpeciesFromUnchargedGraph()
         super().__init__()
 
     @staticmethod
@@ -367,6 +398,9 @@ class ReduceGraphByEnergyReducer (Computation):
         # reading reaction graph path
         rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="{}_rxn_graph_path".format(self.target_graph)).one()[0]
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
+        print("BEFORE REDUCTION")
+        print("n species =", len(rxn_graph.species))
+        print("n reactions =", len(rxn_graph.reactions))
         # removing species with bad geometry or failed computation
         rxn_graph = self.reduce_bad_geometries(db_session, rxn_graph)
         # updating energy values for species
@@ -374,12 +408,15 @@ class ReduceGraphByEnergyReducer (Computation):
         # applying reducer on graph
         rxn_graph = self.reducer.apply(rxn_graph)
         rxn_graph.save(rxn_graph_path)
+        print("AFTER REDUCTION")
+        print("n species =", len(rxn_graph.species))
+        print("n reactions =", len(rxn_graph.reactions))
         if self.local_file_name:
             iter_count = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
             res_dir = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="results_dir").one()[0]
             local_file = os.path.join(res_dir, iter_count, self.local_file_name)
             shutil.copyfile(rxn_graph_path, local_file)
-        return []
+        return self.update_species_comp.execute(db_session, rxn_graph)
 
 
 class ElementaryReactionEnumeration (Computation):
@@ -512,10 +549,16 @@ class FindMvc (Computation):
                 mvc = candidate
                 min_mvc_l = len(mvc)
         # inserting MVC data to database
+        print("Found MVC with {} species".format(len(mvc)))
         iter_count = \
         db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
         entries = []
         for specie in mvc:
             sid = rxn_graph.make_unique_id(specie)
-            entries.append(self.sql_model(id=sid, iteration=iter_count))
+            if not db_session.query(exists().where(self.sql_model.id == sid)).scalar():
+                print("adding {} to mvc".format(sid))
+                entries.append(self.sql_model(id=sid, iteration=iter_count))
+            else:
+                print("{} exists in MVC table, we don't add twice !".format(sid))
+                
         return entries

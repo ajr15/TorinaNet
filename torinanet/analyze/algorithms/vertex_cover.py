@@ -53,10 +53,16 @@ def greedy_mvc(rxn_graph: BaseRxnGraph, greedy_metric: str, only_products: bool=
     while True:
         # stopping condition = no more uncovered reactions => remained reactions = uncovered reactions
         remained_reactions = set([_rxn_graph.make_unique_id(r) for r in _rxn_graph.reactions])
-        if remained_reactions == covered_reactions:
+        if remained_reactions.issubset(covered_reactions):
             if verbose > 0:
                 print("Found MVC !")
             return [rxn_graph.get_specie_from_id(s) for s in list(mvc)]
+
+        if verbose > 0:
+            print(mvc)
+            print("covered {} out of {} ({:.2f}%)".format(n_reactions - len(_rxn_graph.reactions) + len(covered_reactions),
+                                                          n_reactions, (n_reactions - len(_rxn_graph.reactions) + len(covered_reactions)) /
+                                                                            n_reactions * 100))
         # randomly select reaction (all are uncovered)
         rxn = np.random.choice(_rxn_graph.reactions)
         if _rxn_graph.make_unique_id(rxn) in covered_reactions:
@@ -75,10 +81,7 @@ def greedy_mvc(rxn_graph: BaseRxnGraph, greedy_metric: str, only_products: bool=
         if not specie:
           continue
         mvc.add(rxn_graph.make_unique_id(specie))
-        if verbose > 0:
-            print("covered {} out of {} ({:.2f}%)".format(n_reactions - len(_rxn_graph.reactions) + len(covered_reactions),
-                                                          n_reactions, (n_reactions - len(_rxn_graph.reactions) + len(covered_reactions)) /
-                                                                            n_reactions * 100))
         # clear the network from dependent reactions
         _rxn_graph = _rxn_graph.remove_specie(s)
+
 
