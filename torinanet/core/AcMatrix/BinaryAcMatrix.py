@@ -117,7 +117,10 @@ class BinaryAcMatrix (AcMatrix):
                 break
         # reading as a specie
         unbound_mat = BinaryAcMatrix(sorted_mat[:bounded_idx, :bounded_idx])
-        specie = obmol_to_molecule(unbound_mat.to_obmol())
+        unbound_mol = unbound_mat.to_obmol()
+        unbound_mol.PerceiveBondOrders()
+        specie = obmol_to_molecule(unbound_mol)
+        
         # making guess geometry for specie
         specie = guess_geometry(specie)
         # in case no connected molecues found, return specie

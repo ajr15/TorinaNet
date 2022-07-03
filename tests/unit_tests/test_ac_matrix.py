@@ -1,4 +1,4 @@
-from scripts.config import TORINA_NET_DIR, TORINA_X_DIR
+from config import TORINA_NET_DIR, TORINA_X_DIR
 import sys
 sys.path.append(TORINA_NET_DIR)
 sys.path.append(TORINA_X_DIR)
@@ -21,6 +21,8 @@ class TestBinaryMatrix (unittest.TestCase):
         self.build_smiles("c1occccc1")
         print("building CCC(CC)O")
         self.build_smiles("CCC(CC)O")
+        print("building CO2")
+        self.build_smiles("O=C=O")
 
 
 if __name__ == "__main__":
