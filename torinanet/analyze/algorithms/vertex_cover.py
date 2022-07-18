@@ -59,7 +59,6 @@ def greedy_mvc(rxn_graph: BaseRxnGraph, greedy_metric: str, only_products: bool=
             return [rxn_graph.get_specie_from_id(s) for s in list(mvc)]
 
         if verbose > 0:
-            print(mvc)
             print("covered {} out of {} ({:.2f}%)".format(n_reactions - len(_rxn_graph.reactions) + len(covered_reactions),
                                                           n_reactions, (n_reactions - len(_rxn_graph.reactions) + len(covered_reactions)) /
                                                                             n_reactions * 100))

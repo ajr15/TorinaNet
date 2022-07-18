@@ -24,23 +24,31 @@ class Enumerator:
 
     """Class to handle enumeration of elementary reactions"""
 
-    def __init__(self, rxn_graph, pipeline, n_iter: int, results_dir: str):
+    def __init__(self, rxn_graph, pipeline, n_iter: int, results_dir: str, reflect: bool=True):
         self.rxn_graph = rxn_graph
         self.pipeline = pipeline
         self.n_iter = n_iter
         self.results_dir = os.path.abspath(results_dir)
         db_path = os.path.abspath(os.path.join(results_dir, "main.db"))
-        engine = create_engine("sqlite:///{}".format(db_path))
-        SqlBase.metadata.create_all(engine)
+        if os.path.isfile(db_path) and not reflect:
+            os.remove(db_path)
+            engine = create_engine("sqlite:///{}".format(db_path))
+            SqlBase.metadata.create_all(engine)
+        else:
+            engine = create_engine("sqlite:///{}".format(db_path))
+            SqlBase.metadata.create_all(engine)
+        
         self.session = sessionmaker(bind=engine)()
         self.load_settings(overwrite=True)
 
     def _load_setting(self, name: str, value: Optional[str]=None, overwrite: bool=False):
         """Method to safely load a setting from and to main.db file"""
-        query = self.session.query(ConfigValue.value).filter_by(name=name)
+        query = self.session.query(ConfigValue).filter_by(name=name)
         # if setting is not set, put the value
-        if query.count() == 0 or overwrite:
+        if query.count() == 0:
             self.session.add(ConfigValue(name=name, value=value))
+        elif overwrite:
+            query.update({"value": value})
         # else, don't do anything and use the existing setting
 
     def load_settings(self, overwrite: bool=False):
@@ -48,12 +56,12 @@ class Enumerator:
         # properly define results dir
         if not os.path.isdir(self.results_dir):
             os.makedirs(self.results_dir)
-        self.session.add(ConfigValue(name="results_dir", value=self.results_dir))
         # properly saves reaction graph
         rxn_graph_path = os.path.join(self.results_dir, "uncharged.rxn")
         if self.rxn_graph.use_charge:
             self.rxn_graph = self.rxn_graph.uncharge()
         self.rxn_graph.save(rxn_graph_path)
+        self._load_setting("results_dir", self.results_dir, overwrite=True)
         self._load_setting("uncharged_rxn_graph_path", rxn_graph_path, overwrite)
         self._load_setting("charged_rxn_graph_path", os.path.join(self.results_dir, "charged.rxn"), overwrite)
         self._load_setting("macro_iteration", "0", overwrite)
@@ -110,8 +118,8 @@ class SimpleEnumerator (Enumerator):
                         output_type: Optional[tx.io.FileParser]=None,
                         reaction_energy_th: float=0.064, # Ha = 40 kcal/mol
                         use_shortest_path: bool=True,
-                        sp_energy_th: float=0.096 # Ha = 60 kcal/mol
-                        ):
+                        sp_energy_th: float=0.096, # Ha = 60 kcal/mol
+                        reflect: bool=True):
         # parsing input parameters
         self.parse_inputs(max_changing_bonds,
                         ac_filters,
@@ -149,7 +157,7 @@ class SimpleEnumerator (Enumerator):
             # uncharging charged graph
             comps.UnchargeGraph()
         ]
-        super().__init__(rxn_graph, pipeline, n_iter, results_dir)
+        super().__init__(rxn_graph, pipeline, n_iter, results_dir, reflect)
 
     def parse_inputs(self,
                         max_changing_bonds: int=2,
@@ -168,8 +176,10 @@ class SimpleEnumerator (Enumerator):
         if not ac_filters:
             self.ac_filters = [
                 tn.iterate.ac_matrix_filters.MaxBondsPerAtom(),
-                tn.iterate.ac_matrix_filters.MaxAtomsOfElement({4: 4, 6: 4})
+                tn.iterate.ac_matrix_filters.MaxAtomsOfElement({6: 4, 8: 4, 7: 4})
             ]
+        else:
+            self.ac_filters = ac_filters
         # making charge filters
         self.charge_filters = [tn.iterate.charge_filters.MaxAbsCharge(max_abs_charge)]
         # parsing external computation kwargs - defaults to ORCA basic energy computation
@@ -180,12 +190,20 @@ class SimpleEnumerator (Enumerator):
             slurm_config = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(slurm_config)
             self.program = slurm_config.job_dict["orca"]["program"]
+        else:
+            self.program = program
         if not input_type:
             self.input_type = tx.io.OrcaIn
+        else:
+            self.input_type = input_type
         if not output_type:
             self.output_type = tx.io.OrcaOut
+        else:
+            self.output_type = output_type
         if not comp_kwdict:
             self.comp_kwdict = {"input_text": "! OPT"}
+        else:
+            self.comp_kwdict = comp_kwdict
 
 
 class MvcEnumerator (SimpleEnumerator):
@@ -209,8 +227,8 @@ class MvcEnumerator (SimpleEnumerator):
                         reaction_energy_th: float=0.064, # Ha = 40 kcal/mol
                         min_electron_energy: float=-8, # Ha / electron - low value (from H2O), should be enough
                         use_shortest_path: bool=True,
-                        sp_energy_th: float=0.096 # Ha = 60 kcal/mol
-                        ):
+                        sp_energy_th: float=0.096, # Ha = 60 kcal/mol
+                        reflect: bool=True):
         # parsing input kwargs
         self.parse_inputs(max_changing_bonds,
                         ac_filters,
@@ -267,7 +285,7 @@ class MvcEnumerator (SimpleEnumerator):
             # uncharging charged graph
             comps.UnchargeGraph()
         ]
-        super(SimpleEnumerator, self).__init__(rxn_graph, pipeline, n_iter, results_dir)
+        super(SimpleEnumerator, self).__init__(rxn_graph, pipeline, n_iter, results_dir, reflect)
 
     def pre_enumerate(self):
         """Pre-enumeration calculation for calculating source specie's energies and basic sizes for
@@ -283,10 +301,12 @@ class MvcEnumerator (SimpleEnumerator):
         for s in self.rxn_graph.source_species:
             # adding reactants
             sid = self.rxn_graph.make_unique_id(s)
-            s_entry = specie_model(id=sid, ac_matrix_str=s.ac_matrix._to_str(), smiles=s.ac_matrix.to_specie().identifier)
-            entries.append(s_entry)
-            c_entry = charge_model(id=s._get_charged_id_str(), charge=s.charge, uncharged_sid=sid)
-            entries.append(c_entry)
+            if self.session.query(specie_model).filter_by(id=sid).count() == 0:
+              s_entry = specie_model(id=sid, ac_matrix_str=s.ac_matrix._to_str(), smiles=s.ac_matrix.to_specie().identifier)
+              entries.append(s_entry)
+            if self.session.query(charge_model).filter_by(id=s._get_charged_id_str()).count() == 0:
+              c_entry = charge_model(id=s._get_charged_id_str(), charge=s.charge, uncharged_sid=sid)
+              entries.append(c_entry)
         self.session.add_all(entries)
         self.session.commit() 
         # building molecules, calculating energies, reading results

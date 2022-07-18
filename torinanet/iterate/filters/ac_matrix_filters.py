@@ -2,7 +2,6 @@
 from abc import ABC, abstractclassmethod
 from typing import Optional
 
-from click import Option
 
 class AcMatrixFilter (ABC):
     """Abstract AC matrix filter"""
@@ -42,8 +41,9 @@ class MaxBondsPerAtom (AcMatrixFilter):
             if ac_matrix.get_atom(atom_idx) in self.dative_atoms:
                 # if atom has dative capabilities, dont count dummies as neighbors
                 return sum([1 if ac_matrix.get_atom(n) > 0 else 0 for n in neigbors])
-            else:
-                return len(neigbors)
+        # if we count all neigbors as bonds, return length of neighbor list
+        return len(neigbors)
+        
 
     def check(self, ac_matrix):
         for i in range(len(ac_matrix)):

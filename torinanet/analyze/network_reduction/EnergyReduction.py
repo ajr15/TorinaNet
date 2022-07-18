@@ -26,7 +26,6 @@ class SimpleEnergyReduction:
                 # ensure specie is in graph after some reductions
                 if rxn_graph.has_specie(specie):
                     s_energy = analyzer.get_distance_from_source(specie)
-                    print(specie.identifier, specie.charge, s_energy)
                     if s_energy > self.sp_energy_th:
                         rxn_graph = rxn_graph.remove_specie(specie)
         # analyzing reaction energies
