@@ -228,6 +228,15 @@ class MvcEnumerator (SimpleEnumerator):
                         min_electron_energy: float=-8, # Ha / electron - low value (from H2O), should be enough
                         use_shortest_path: bool=True,
                         sp_energy_th: float=0.096, # Ha = 60 kcal/mol
+                        use_mvc: bool=True,
+                        use_kinetics: bool=True,
+                        reaction_rate_th: float=2.11e-17, # rate corresponding to "effective barrier" of 40 kcal/mol in 298 K
+                        rate_constant_property: str="k", 
+                        simulation_time: float=100, 
+                        timestep: float=0.01, 
+                        reactant_concs: Optional[str]=None, 
+                        temperature: float=298,
+                        kinetic_solver_kwargs: dict={},
                         reflect: bool=True):
         # parsing input kwargs
         self.parse_inputs(max_changing_bonds,
@@ -254,25 +263,41 @@ class MvcEnumerator (SimpleEnumerator):
             # filter molecules without build
             comps.ReduceGraphByCriterion("uncharged", build_filter),
             # enumerate redox reactions & update charge information on species in DB
-            comps.RedoxReactionEnumeration(max_reduction, max_oxidation, self.charge_filters),
+            comps.RedoxReactionEnumeration(max_reduction, max_oxidation, self.charge_filters)]
+        if use_mvc:
             # finding minimal vertex cover
-            comps.FindMvc(n_trails=5),
+            pipeline += [comps.FindMvc(n_trails=5),
             # calculate energies for MVC species
-            comps.ExternalCalculation(slurm_client, self.program, self.input_type,
-                                      self.comp_kwdict, self.output_type.extension,
-                                      specie_tablename="mvc_species"),
-            # read computation results for MVC species
-            comps.ReadCompOutput(dask_client, self.output_type),
+                            comps.ExternalCalculation(slurm_client, self.program, self.input_type,
+                                                    self.comp_kwdict, self.output_type.extension,
+                                                    specie_tablename="mvc_species"),
+                            # read computation results for MVC species
+                            comps.ReadCompOutput(dask_client, self.output_type)]
+        if use_mvc or min_electron_energy:
             # energy based reduction with MVC species data
-            comps.ReduceGraphByEnergyReducer(
-                tn.analyze.network_reduction.EnergyReduction.MinEnergyReduction(reaction_energy_th,
-                                                                                min_electron_energy,
-                                                                                   use_shortest_path,
-                                                                                   sp_energy_th),
-                "charged",
-                "mvc_reduced_graph.rxn"),
-            # now, calculating energies for every specie in graph
-            comps.ExternalCalculation(slurm_client, self.program, self.input_type, self.comp_kwdict, self.output_type.extension),
+            pipeline += [comps.ReduceGraphByEnergyReducer(
+                            tn.analyze.network_reduction.EnergyReduction.MinEnergyReduction(reaction_energy_th,
+                                                                                            min_electron_energy,
+                                                                                            use_shortest_path,
+                                                                                            sp_energy_th),
+                            "charged",
+                            "mvc_energy_reduced_graph.rxn")]
+            if use_kinetics:
+                pipeline += [comps.ReduceGraphByEnergyReducer(
+                                tn.analyze.network_reduction.KineticReduction.SimpleKineticsReduction(reaction_rate_th, 
+                                                                                                    rate_constant_property, 
+                                                                                                    simulation_time, 
+                                                                                                    timestep, 
+                                                                                                    reactant_concs, 
+                                                                                                    temperature,
+                                                                                                    energy_conversion_factor=4.359744e-18, 
+                                                                                                    specie_energy_property_name="energy", 
+                                                                                                    estimate_max_constants=True,
+                                                                                                    **kinetic_solver_kwargs),
+                                "charged",
+                                "mvc_kinetic_reduced_graph.rxn")]
+        # now, calculating energies for every specie in graph
+        pipeline += [comps.ExternalCalculation(slurm_client, self.program, self.input_type, self.comp_kwdict, self.output_type.extension),
             # read computation results
             comps.ReadCompOutput(dask_client, self.output_type),
             # energy based reduction for all species
@@ -281,10 +306,23 @@ class MvcEnumerator (SimpleEnumerator):
                                                                                    use_shortest_path,
                                                                                    sp_energy_th),
                 "charged",
-                "reduced_graph.rxn"),
+                "energy_reduced_graph.rxn")]
+        if use_kinetics:
+            pipeline += [comps.ReduceGraphByEnergyReducer(
+                            tn.analyze.network_reduction.KineticReduction.SimpleKineticsReduction(reaction_rate_th, 
+                                                                                                rate_constant_property, 
+                                                                                                simulation_time, 
+                                                                                                timestep, 
+                                                                                                reactant_concs, 
+                                                                                                temperature,
+                                                                                                energy_conversion_factor=4.359744e-18, 
+                                                                                                specie_energy_property_name="energy", 
+                                                                                                estimate_max_constants=True,
+                                                                                                **kinetic_solver_kwargs),
+                            "charged",
+                            "kinetic_reduced_graph.rxn")]
             # uncharging charged graph
-            comps.UnchargeGraph()
-        ]
+        pipeline += [comps.UnchargeGraph()]
         super(SimpleEnumerator, self).__init__(rxn_graph, pipeline, n_iter, results_dir, reflect)
 
     def pre_enumerate(self):

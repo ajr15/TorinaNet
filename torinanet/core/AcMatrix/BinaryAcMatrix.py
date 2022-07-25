@@ -120,7 +120,6 @@ class BinaryAcMatrix (AcMatrix):
         unbound_mol = unbound_mat.to_obmol()
         unbound_mol.PerceiveBondOrders()
         specie = obmol_to_molecule(unbound_mol)
-        
         # making guess geometry for specie
         specie = guess_geometry(specie)
         # in case no connected molecues found, return specie

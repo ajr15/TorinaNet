@@ -1,1 +1,1 @@
-from . import network_reduction, percolation, algorithms, visualize
+from . import network_reduction, percolation, algorithms, visualize, kinetics

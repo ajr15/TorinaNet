@@ -14,7 +14,7 @@ def make_rxn_strings(rxn_graph: tn.core.RxnGraph):
                 " -> " + \
                 " + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.products])
         strs.add(s)
-    return s
+    return strs
 
 
 class TestRxnGraph (unittest.TestCase):
