@@ -35,26 +35,30 @@ class Reaction:
         ajr = Reaction(None, None, {}) # must instanciate with explicit values (unclear why, probably some memory managment bug)
         # first reading products from joint ac matrix
         products_acs = products.get_compoenents()
-        ajr.products = [Specie.from_ac_matrix(ac) for ac in products_acs]
+        products = [Specie.from_ac_matrix(ac) for ac in products_acs]
+        prod_sids = [s._get_charged_id_str() for s in products]
         # adding reactants and making sure that all are consumed in the reaction (no reactions like A + B -> A + C)
         # this is done by checking if a reactants appears in the products
-        prod_id_dict = {s._get_id_str(): i for i, s in enumerate(ajr.products)}
         reactants_acs = reactants.get_compoenents()
+        reactants = [Specie.from_ac_matrix(ac) for ac in reactants_acs]
+        # getting mutual species & adding reactants
         ajr.reactants = []
-        for ac in reactants_acs:
-            s = Specie.from_ac_matrix(ac)
-            sid = s._get_id_str()
-            # if reactant doesn't appear in the products, add it to reactants
-            if not sid in prod_id_dict:
-                ajr.reactants.append(s)
+        mutual = set()
+        for s in reactants:
+            sid = s._get_charged_id_str()
+            # if reactant appears in the products, add it to joined list - DO NOT ADD TO REACTION
+            if sid in prod_sids:
+                mutual.add(sid)
             # if reactant appears in the products, don't add reactant and remove product
             else:
-                idx = prod_id_dict[sid]
-                ajr.products.pop(idx)
-                # correcting idxs in the dictionary
-                for k, v in prod_id_dict.items():
-                    if v > idx:
-                        prod_id_dict[k] = v - 1
+                ajr.reactants.append(s)
+        # adding products
+        for s in products:
+            sid = s._get_charged_id_str()
+            # if reactant is not mutual with reactants - add to reaction
+            if not sid in mutual:
+                ajr.products.append(s)
+
         # calculating reaction's properties
         ajr._id_properties['r_num'] = len(ajr.reactants)
         ajr._id_properties['p_num'] = len(ajr.products)
