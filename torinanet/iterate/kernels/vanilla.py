@@ -1,10 +1,12 @@
 """Util functions for vanilla kernel (dask parallelization and no numba accelaration)"""
-from ..filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds
+from ..filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds, _TwoSpecieMatrix
 from .commons import gen_unique_idx_combinations_for_conv_mats
 import numpy as np
 
 def generate_single_bond_conversion_matrices(ac, conversion_filters, only_single_bonds):
     """Method to generate all single bond conversion matrices for a given ac matrix"""
+    # remove the _TwoSpecieMatrix filter for the single conversion matrix formation
+    filters = [c for c in conversion_filters if not type(c) is _TwoSpecieMatrix]
     # get all possible conv matrices (single bond change)
     mats = []
     for i in range(len(ac)):
@@ -13,19 +15,19 @@ def generate_single_bond_conversion_matrices(ac, conversion_filters, only_single
                 mat = np.zeros((len(ac), len(ac)))
                 mat[i][j] = 1
                 mat[j][i] = 1
-                if all([c.check(mat) for c in conversion_filters]):
+                if all([c.check(mat) for c in filters]):
                     mats.append(mat)
             else: # makes sure only single bonds are created
                 mat = np.zeros((len(ac), len(ac)))
                 mat[i][j] = -1
                 mat[j][i] = -1
-                if all([c.check(mat) for c in conversion_filters]):
+                if all([c.check(mat) for c in filters]):
                     mats.append(mat)
                 if not only_single_bonds:
                     mat = np.zeros((len(ac), len(ac)))
                     mat[i][j] = 1
                     mat[j][i] = 1
-                    if all([c.check(mat) for c in conversion_filters]):
+                    if all([c.check(mat) for c in filters]):
                         mats.append(mat)
     return mats
 

@@ -49,7 +49,12 @@ class Reaction:
                 ajr.reactants.append(s)
             # if reactant appears in the products, don't add reactant and remove product
             else:
-                ajr.products.pop(prod_id_dict[sid])
+                idx = prod_id_dict[sid]
+                ajr.products.pop(idx)
+                # correcting idxs in the dictionary
+                for k, v in prod_id_dict.items():
+                    if v > idx:
+                        prod_id_dict[k] = v - 1
         # calculating reaction's properties
         ajr._id_properties['r_num'] = len(ajr.reactants)
         ajr._id_properties['p_num'] = len(ajr.products)
