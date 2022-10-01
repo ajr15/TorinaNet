@@ -117,6 +117,7 @@ class BuildMolecules (DaskComputation):
         except OpenbabelBuildError or OpenbabelFfError:
             m = {"id": sid,
                  "successful": False}
+        
         return m
 
     def make_futures(self, db_session):
@@ -261,9 +262,17 @@ class ReadCompOutput (DaskComputation):
         # reading molecule from xyz file
         original_mol = ob_read_file_to_molecule(xyz_path)
         # reading output
-        output = output_type(output_path)
-        out_mol = output.read_specie()
-        out_d = output.read_scalar_data()
+        try:
+            output = output_type(output_path)
+            out_mol = output.read_specie()
+            out_d = output.read_scalar_data()
+        # if errors encountered in output parsing - computation is not successful
+        except:
+            print("parsing error in", output_path)
+            return {
+                      "id": sid,
+                      "successful": False,
+                  }
         # returning SQL entry with results
         return {
             "id": sid,

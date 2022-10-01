@@ -13,6 +13,7 @@ class SimpleEnergyReduction:
     @staticmethod
     def calc_reaction_energy(reaction):
         """Calculate energy difference between species and reactants in a reaction"""
+        #print("{} -> {}".format(" + ".join([s.identifier for s in reaction.reactants]), " + ".join([s.identifier for s in reaction.products])))  
         reactants_e = sum([s.properties["energy"] for s in reaction.reactants])
         products_e = sum([s.properties["energy"] for s in reaction.products])
         return products_e - reactants_e
