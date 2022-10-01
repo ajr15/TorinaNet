@@ -1,2 +1,2 @@
-TORINA_NET_DIR = "C:\\Users\\Shachar\\OneDrive\\Documents\\repos\\TorinaNet"
-TORINA_X_DIR = "C:\\Users\\Shachar\\OneDrive\\Documents\\repos\\TorinaX"
+TORINA_NET_DIR = "/home/shaharpit/Personal/TorinaNet"
+TORINA_X_DIR = "/home/shaharpit/Personal/TorinaX"

@@ -45,7 +45,7 @@ class Specie:
 
     def _get_charged_id_str(self):
         s = self._get_id_str()
-        return s + "_charge_{}".format(int(self.charge))
+        return s + "_charge_{}".format(int(self.charge) if not self.charge is None else "None")
         
 
     def has_charge(self):
