@@ -525,8 +525,10 @@ class FindMvc (Computation):
         "iteration": Column(Integer),
     }
 
-    def __init__(self, n_trails: int=10):
+    def __init__(self, n_trails: int=10, max_samples: int=300, metric: str="degree"):
         self.n_trails = n_trails
+        self.max_samples = max_samples
+        self.metric = metric
         super().__init__()
 
     def execute(self, db_session) -> List[SqlBase]:
@@ -540,14 +542,14 @@ class FindMvc (Computation):
         mvc = []
         min_mvc_l = len(rxn_graph.species)
         for _ in range(self.n_trails):
-            degree_mvc = tn.analyze.algorithms.greedy_mvc(rxn_graph, "degree", only_products=True,
-                                                          covered_species=covered_species)
-            percolation_mvc = tn.analyze.algorithms.greedy_mvc(rxn_graph, "percolation", only_products=True,
-                                                          covered_species=covered_species)
-            candidate = degree_mvc if len(degree_mvc) < len(percolation_mvc) else percolation_mvc
-            if len(candidate) < min_mvc_l:
+            candidate = tn.analyze.algorithms.greedy_mvc(rxn_graph, self.metric, only_products=True,
+                                                          covered_species=covered_species, max_samples=self.max_samples)
+            if len(candidate) < min_mvc_l and len(candidate) > 0:
                 mvc = candidate
                 min_mvc_l = len(mvc)
+        # if no MVC is found stochastically, find MVC deterministically 
+        if len(mvc) == 0:
+            mvc = tn.analyze.algorithms.max_metric_mvc(rxn_graph, self.metric, covered_species=covered_species)
         # inserting MVC data to database
         print("Found MVC with {} species".format(len(mvc)))
         iter_count = \

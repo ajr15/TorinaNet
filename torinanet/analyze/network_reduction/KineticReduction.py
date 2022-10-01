@@ -38,20 +38,20 @@ class SimpleKineticsReduction:
         if self.estimate_max_constants:
             rxn_graph = assign_maximal_rate_constants(rxn_graph, self.temperature, self.energy_conversion_factor, self.specie_energy_property_name, self.rate_constant_property)
         if not self.reactant_concs:
-            self.reactant_concs = {s: 1 for s in rxn_graph.source_species}
+            self.reactant_concs = {rxn_graph.make_unique_id(s): 1 for s in rxn_graph.source_species}
         # initializing kinetic solver
         analyzer = KineticAnalyzer(rxn_graph, self.rate_constant_property)
         # building initial concentrations
         initial_concs = np.zeros(len(rxn_graph.species))
-        for s, v in self.reactant_concs:
+        for s, v in self.reactant_concs.items():
             initial_concs[analyzer.get_specie_index(s)] = v
         # solving kinetics
-        analyzer.solve_kinetics(self.simulation_time, self.timestep, initial_concs, **self.solver_kwargs)
+        max_rates = analyzer.find_max_reaction_rates(self.simulation_time, self.timestep, initial_concs, **self.solver_kwargs)
         # analyzing reaction rates
         for rxn in rxn_graph.reactions:
             # ensure reaction is in graph after some reductions
             if rxn_graph.has_reaction(rxn):
-                rate = analyzer.get_max_rate(rxn)
-                if rate > self.reaction_rate_th:
+                rid = rxn_graph.make_unique_id(rxn)
+                if max_rates[rid] < self.reaction_rate_th:
                     rxn_graph = rxn_graph.remove_reaction(rxn)
         return rxn_graph

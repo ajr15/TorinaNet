@@ -4,7 +4,7 @@
 # finds concentrations at steady state (if exist) or maximal rates / concentrations
 import numpy as np
 from scipy.integrate import ode
-from typing import List
+from typing import List, Optional
 from ...core.RxnGraph import BaseRxnGraph
 from ...core import Reaction, Specie
 
@@ -21,7 +21,7 @@ class KineticAnalyzer:
         self._concs = None
         self._ts = None
 
-    def get_rate(self, rxn: Reaction, step: int) -> float:
+    def get_rate(self, rxn: Reaction, step: Optional[int]=None) -> float:
         """Method to get the rate of a reaction at a given simulation step"""
         return rxn.properties["k"] * np.product([self.get_concentration(s, step) for s in rxn.reactants])
 
@@ -34,15 +34,20 @@ class KineticAnalyzer:
                 max_rate = r
         return max_rate
 
-    def get_concentration(self, specie: Specie, step: int) -> float:
+    def get_concentration(self, specie: Specie, step: Optional[int]=None) -> float:
         """Get specie concentration at a simulation step"""
         if self._concs:
             # securing case with too large step number
-            if step >= len(self._concs):
-                print("WARNING: supplied step is larger than the total number of steps, returning concentration on last step")
-                step = len(self._concs) - 1
-            # returning the concentration
             if self.rxn_graph.has_specie(specie):
+                if step is None:
+                    # return concentration in last step is step is not defined
+                    sid = self.rxn_graph.make_unique_id(specie)
+                    idx = self._specie_d[sid]
+                    return self._concs[-1][idx]
+                if step >= len(self._concs):
+                    print("WARNING: supplied step is larger than the total number of steps, returning concentration on last step")
+                    step = len(self._concs) - 1
+                # returning the concentration
                 sid = self.rxn_graph.make_unique_id(specie)
                 idx = self._specie_d[sid]
                 return self._concs[step][idx]
@@ -110,13 +115,45 @@ class KineticAnalyzer:
             self._ts.append(t)
             self._concs.append(solver.integrate(t))
 
+    def find_max_reaction_rates(self, simulation_time: float, timestep: float, initial_concs: List[float], **solver_kwargs):
+        """Solve the rate equations at given conditions and follow only the maximal reaction rates.
+        ARGS:
+            - simulation_time (float): total simulation time
+            - timestep (float): time of each simulation step
+            - initial_concs (List[float]): list of initial specie concentrations
+            - **solver_kwargs: keywords for scipy.integrate.ode.set_integrator method
+        RETURNS:
+            None"""
+        # building target function
+        target_f = self._build_f()
+        # setting up solver
+        solver = ode(target_f)
+        solver.set_integrator(**solver_kwargs)
+        solver.set_initial_value(y=initial_concs)
+        # solving the ODE
+        t = 0
+        self._concs = [initial_concs]
+        self._ts = [0]
+        max_rates = {self.rxn_graph.make_unique_id(rxn): self.get_rate(rxn) for rxn in self.rxn_graph.reactions}
+        while solver.successful() and t < simulation_time:
+            t = t + timestep
+            self._ts[0] = t
+            self._concs[0] = solver.integrate(t)
+            print("time =", t)
+            for rxn in self.rxn_graph.reactions:
+                rid = self.rxn_graph.make_unique_id(rxn)
+                rate = self.get_rate(rxn)
+                if rate > max_rates[rid]:
+                    max_rates[rid] = rate
+        print("DONE !")
+        return max_rates
+
     def get_n_steps(self) -> int:
         """Get the total number of simulation steps. If no simulation was ran, returns None"""
         if self._concs:
             return len(self._concs)
 
-    def get_specie_index(self, specie: Specie):
-        sid = self.rxn_graph.make_unique_id(specie)
+    def get_specie_index(self, sid: str):
         if sid in self._specie_d:
             return self._specie_d[sid]
         else:
