@@ -61,10 +61,16 @@ class Enumerator:
         if self.rxn_graph.use_charge:
             self.rxn_graph = self.rxn_graph.uncharge()
         self.rxn_graph.save(rxn_graph_path)
+        # loading config settings
         self._load_setting("results_dir", self.results_dir, overwrite=True)
         self._load_setting("uncharged_rxn_graph_path", rxn_graph_path, overwrite)
         self._load_setting("charged_rxn_graph_path", os.path.join(self.results_dir, "charged.rxn"), overwrite)
         self._load_setting("macro_iteration", "0", overwrite)
+        # resetting dynamic tables
+        for comp in self.pipeline:
+            # delete the "relevance" recods for external computations - these are set on each run independently
+            if isinstance(comp, comps.ExternalCalculation):
+                self.session.query(comp.relevence_model).delete()
         self.session.commit()
 
     def load_uncharged_graph(self) -> tn.core.RxnGraph:
@@ -117,7 +123,7 @@ class SimpleEnumerator (Enumerator):
                     input_type: Optional[tx.io.FileParser]=None,
                     output_type: Optional[tx.io.FileParser]=None,
                     reaction_energy_th: float=0.064, # Ha = 40 kcal/mol
-                    min_electron_energy: float=-8, # Ha / electron - low value (from H2O), should be enough
+                    min_electron_energy: Optional[float]=None, 
                     use_shortest_path: bool=True,
                     sp_energy_th: float=0.096, # Ha = 60 kcal/mol
                     use_mvc: bool=True,
@@ -165,9 +171,10 @@ class SimpleEnumerator (Enumerator):
                             # calculate energies for MVC species
                             comps.ExternalCalculation(slurm_client, self.program, self.input_type,
                                                     self.comp_kwdict, self.output_type.extension,
-                                                    specie_tablename="mvc_species"),
+                                                    specie_tablename="mvc_species",
+                                                    name="energy_comp"),
                             # read computation results for MVC species
-                            comps.ReadCompOutput(dask_client, self.output_type)]
+                            comps.ReadCompOutput(dask_client, self.output_type, comp_output_table_name="energy_comp")]
         if use_mvc or min_electron_energy:
             # energy based reduction with MVC species data
             pipeline += [comps.ReduceGraphByEnergyReducer(
@@ -176,7 +183,8 @@ class SimpleEnumerator (Enumerator):
                                                                                             use_shortest_path,
                                                                                             sp_energy_th),
                             "charged",
-                            "mvc_energy_reduced_graph.rxn")]
+                            "mvc_energy_reduced_graph.rxn",
+                            energy_comp_tablename="energy_comp")]
             if use_kinetics:
                 pipeline += [comps.ReduceGraphByEnergyReducer(
                                 tn.analyze.network_reduction.KineticReduction.SimpleKineticsReduction(reaction_rate_th, 
@@ -190,18 +198,20 @@ class SimpleEnumerator (Enumerator):
                                                                                                     estimate_max_constants=True,
                                                                                                     **kinetic_solver_kwargs),
                                 "charged",
-                                "mvc_kinetic_reduced_graph.rxn")]
+                                "mvc_kinetic_reduced_graph.rxn",
+                                energy_comp_tablename="energy_comp")]
         # now, calculating energies for every specie in graph
-        pipeline += [comps.ExternalCalculation(slurm_client, self.program, self.input_type, self.comp_kwdict, self.output_type.extension),
+        pipeline += [comps.ExternalCalculation(slurm_client, self.program, self.input_type, self.comp_kwdict, self.output_type.extension, name="energy_comp"),
             # read computation results
-            comps.ReadCompOutput(dask_client, self.output_type),
+            comps.ReadCompOutput(dask_client, self.output_type, energy_comp_tablename="energy_comp"),
             # energy based reduction for all species
             comps.ReduceGraphByEnergyReducer(
                 tn.analyze.network_reduction.EnergyReduction.SimpleEnergyReduction(reaction_energy_th,
                                                                                 use_shortest_path,
                                                                                 sp_energy_th),
                 "charged",
-                "energy_reduced_graph.rxn")]
+                "energy_reduced_graph.rxn",
+                energy_comp_tablename="energy_comp")]
         if use_kinetics:
             pipeline += [comps.ReduceGraphByEnergyReducer(
                             tn.analyze.network_reduction.KineticReduction.SimpleKineticsReduction(reaction_rate_th, 
@@ -213,6 +223,7 @@ class SimpleEnumerator (Enumerator):
                                                                                                 energy_conversion_factor=4.359744e-18, 
                                                                                                 specie_energy_property_name="energy", 
                                                                                                 estimate_max_constants=True,
+                                                                                                energy_comp_tablename="energy_comp"
                                                                                                 **kinetic_solver_kwargs),
                             "charged",
                             "kinetic_reduced_graph.rxn")]
