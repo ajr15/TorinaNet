@@ -9,7 +9,7 @@ import dask as da
 import openbabel as ob
 from copy import copy
 from typing import Optional
-from torinax.pipelines.computations import Computation, SqlBase, DaskComputation, SlurmComputation, model_lookup_by_table_name
+from torinax.pipelines.computations import Computation, SqlBase, DaskComputation, SlurmComputation, model_lookup_by_table_name, comp_sql_model_creator
 from torinax.utils.openbabel import ob_read_file_to_molecule, molecule_to_obmol
 import torinanet as tn
 
@@ -163,6 +163,8 @@ class ExternalCalculation (SlurmComputation):
         self.comp_kwdict = comp_kwdict
         self.output_ext = output_extension
         self.specie_tablename = specie_tablename
+        # creating relevance table for computation results
+        self.relevence_model = comp_sql_model_creator("{}_relevence".format(name), {"iteration": Column(Integer)})
         super().__init__(slurm_client)
 
     def single_calc(self, xyz_path, comp_dir, sid, charge):
@@ -212,6 +214,7 @@ class ExternalCalculation (SlurmComputation):
             xyz = db_session.query(specie_table.xyz_path).filter_by(id=uncharged_sid).one()[0]
             charge = db_session.query(charge_table).filter_by(id=sid).first().charge
             entry, cmd_str = self.single_calc(xyz, comp_dir, sid, charge)
+            relevence_entry = self.relevence_model(id=sid, iteration=iter_count)
             entries.append(entry)
             cmds.append(cmd_str)
         return entries, cmds
@@ -237,6 +240,7 @@ class ReadCompOutput (DaskComputation):
 
     def __init__(self, dask_client, output_type, comp_output_table_name: str="comp_outputs"):
         self.output_type = output_type
+        self.tablename = "{}_outputs".format(comp_output_table_name)
         self.comp_output_table_name = comp_output_table_name
         super().__init__(dask_client)
 
@@ -365,36 +369,38 @@ class ReduceGraphByEnergyReducer (Computation):
     name = "graph_energy_reduction"
     tablename = None
     
-    def __init__(self, reducer, target_graph: str, local_file_name: Optional[str]=None) -> None:
+    def __init__(self, reducer, target_graph: str, local_file_name: Optional[str]=None, energy_comp_tablename: str="comp_outputs") -> None:
         if not target_graph.lower() in ["charged", "uncharged"]:
             raise ValueError("invalid target graph '{}'. allowed values 'charged' and 'uncharged'".format(target_graph))
         self.target_graph = target_graph.lower()
         self.reducer = reducer
         self.local_file_name = local_file_name
+        self.energy_output_tablename = "{}_".format(energy_comp_tablename)
+        self.energy_relevence_tablename = "{}_".format(energy_comp_tablename)
         if self.target_graph == "charged":
             self.update_species_comp = ReadSpeciesFromChargedGraph()
         else:
             self.update_species_comp = ReadSpeciesFromUnchargedGraph()
         super().__init__()
 
-    @staticmethod
-    def update_specie_energies(db_session, rxn_graph) -> tn.core.RxnGraph:
+    def update_specie_energies(self, db_session, rxn_graph) -> tn.core.RxnGraph:
         """Method to update the species energies in the reaction graph from the computation"""
-        comp_out = model_lookup_by_table_name(ReadCompOutput.tablename)
+        comp_out = model_lookup_by_table_name(self.energy_output_tablename)
+        relevence_model = model_lookup_by_table_name(self.energy_relevence_tablename)
         sids_energies = db_session.query(comp_out.id, comp_out.energy).filter(
-                        comp_out.good_geometry & comp_out.successful).all()
+                        comp_out.good_geometry & comp_out.successful).in_(relevence_model.id).all()
         for sid, energy in sids_energies:
             if rxn_graph.has_specie_id(sid):
                 specie = rxn_graph.get_specie_from_id(sid)
                 specie.properties["energy"] = float(energy)
         return rxn_graph
 
-    @staticmethod
-    def reduce_bad_geometries(db_session, rxn_graph) -> tn.core.RxnGraph:
+    def reduce_bad_geometries(self, db_session, rxn_graph) -> tn.core.RxnGraph:
         """Method to reduce species with bad geometries from graph"""
-        comp_out = model_lookup_by_table_name(ReadCompOutput.tablename)
+        comp_out = model_lookup_by_table_name(self.energy_output_tablename)
+        relevence_model = model_lookup_by_table_name(self.energy_relevence_tablename)
         sids = db_session.query(comp_out.id).filter(
-                        ~(comp_out.good_geometry & comp_out.successful)).all()
+                        ~(comp_out.good_geometry & comp_out.successful)).in_(relevence_model.id).all()
         # removing IDs from graph
         for sid in sids:
             sid = sid[0]
