@@ -184,7 +184,7 @@ class SimpleEnumerator (Enumerator):
                                                                                             sp_energy_th),
                             "charged",
                             "mvc_energy_reduced_graph.rxn",
-                            energy_comp_tablename="energy_comp")]
+                            energy_comp_table_name="energy_comp")]
             if use_kinetics:
                 pipeline += [comps.ReduceGraphByEnergyReducer(
                                 tn.analyze.network_reduction.KineticReduction.SimpleKineticsReduction(reaction_rate_th, 
@@ -203,7 +203,7 @@ class SimpleEnumerator (Enumerator):
         # now, calculating energies for every specie in graph
         pipeline += [comps.ExternalCalculation(slurm_client, self.program, self.input_type, self.comp_kwdict, self.output_type.extension, name="energy_comp"),
             # read computation results
-            comps.ReadCompOutput(dask_client, self.output_type, energy_comp_tablename="energy_comp"),
+            comps.ReadCompOutput(dask_client, self.output_type, comp_output_table_name="energy_comp"),
             # energy based reduction for all species
             comps.ReduceGraphByEnergyReducer(
                 tn.analyze.network_reduction.EnergyReduction.SimpleEnergyReduction(reaction_energy_th,
@@ -211,7 +211,7 @@ class SimpleEnumerator (Enumerator):
                                                                                 sp_energy_th),
                 "charged",
                 "energy_reduced_graph.rxn",
-                energy_comp_tablename="energy_comp")]
+                energy_comp_table_name="energy_comp")]
         if use_kinetics:
             pipeline += [comps.ReduceGraphByEnergyReducer(
                             tn.analyze.network_reduction.KineticReduction.SimpleKineticsReduction(reaction_rate_th, 
@@ -223,7 +223,7 @@ class SimpleEnumerator (Enumerator):
                                                                                                 energy_conversion_factor=4.359744e-18, 
                                                                                                 specie_energy_property_name="energy", 
                                                                                                 estimate_max_constants=True,
-                                                                                                energy_comp_tablename="energy_comp"
+                                                                                                comp_output_table_name="energy_comp"
                                                                                                 **kinetic_solver_kwargs),
                             "charged",
                             "kinetic_reduced_graph.rxn")]
@@ -240,6 +240,8 @@ class SimpleEnumerator (Enumerator):
         # add reactant molecules & atoms to specie's table
         specie_model = model_lookup_by_table_name("uncharged_species")
         charge_model = model_lookup_by_table_name("charged_species")
+        # making all species irrelevant for comuputation
+        self.session.query(charge_model).update({"relevant": False})
         entries = []
         for s in self.rxn_graph.source_species:
             # adding reactants
@@ -250,6 +252,9 @@ class SimpleEnumerator (Enumerator):
             if self.session.query(charge_model).filter_by(id=s._get_charged_id_str()).count() == 0:
               c_entry = charge_model(id=s._get_charged_id_str(), charge=s.charge, uncharged_sid=sid)
               entries.append(c_entry)
+            else:
+              # if specie entry exists, make it relevant
+              self.session.query(charge_model).filter_by(id=s._get_charged_id_str()).update({"relevant": True})
         self.session.add_all(entries)
         self.session.commit() 
         # building molecules, calculating energies, reading results
@@ -262,9 +267,10 @@ class SimpleEnumerator (Enumerator):
                                       self.program,
                                       self.input_type,
                                       self.comp_kwdict,
-                                      self.output_type.extension),
+                                      self.output_type.extension,
+                                      name="energy_comp"),
             # read computation results for MVC species
-            comps.ReadCompOutput(self.dask_client, self.output_type),
+            comps.ReadCompOutput(self.dask_client, self.output_type, comp_output_table_name="energy_comp"),
         ]
         run_computations(pipeline, db_session=self.session)
 

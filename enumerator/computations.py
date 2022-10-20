@@ -203,10 +203,12 @@ class ExternalCalculation (SlurmComputation):
         charge_table = model_lookup_by_table_name(ReadSpeciesFromChargedGraph.tablename)
         if not self.specie_tablename:
             sids = db_session.query(charge_table.id).filter_by(relevant=True).except_(db_session.query(self.sql_model.id)).all()
+            relevent_sids = db_session.query(charge_table.id).filter_by(relevant=True).except_(db_session.query(self.relevence_model.id)).all()
         else:
             custom_table = model_lookup_by_table_name(self.specie_tablename)
             sids = db_session.query(custom_table.id).except_(db_session.query(self.sql_model.id)).all()
-        entries = []
+            relevent_sids = db_session.query(custom_table.id).except_(db_session.query(self.relevence_model.id)).all()
+        entries = [self.relevence_model(id=sid[0], iteration=iter_count) for sid in relevent_sids]
         cmds = []
         for sid in sids:
             sid = sid[0] # artifact of SQL query results - returns tuples
@@ -214,7 +216,6 @@ class ExternalCalculation (SlurmComputation):
             xyz = db_session.query(specie_table.xyz_path).filter_by(id=uncharged_sid).one()[0]
             charge = db_session.query(charge_table).filter_by(id=sid).first().charge
             entry, cmd_str = self.single_calc(xyz, comp_dir, sid, charge)
-            relevence_entry = self.relevence_model(id=sid, iteration=iter_count)
             entries.append(entry)
             cmds.append(cmd_str)
         return entries, cmds
@@ -369,14 +370,14 @@ class ReduceGraphByEnergyReducer (Computation):
     name = "graph_energy_reduction"
     tablename = None
     
-    def __init__(self, reducer, target_graph: str, local_file_name: Optional[str]=None, energy_comp_tablename: str="comp_outputs") -> None:
+    def __init__(self, reducer, target_graph: str, local_file_name: Optional[str]=None, energy_comp_table_name: str="comp_outputs") -> None:
         if not target_graph.lower() in ["charged", "uncharged"]:
             raise ValueError("invalid target graph '{}'. allowed values 'charged' and 'uncharged'".format(target_graph))
         self.target_graph = target_graph.lower()
         self.reducer = reducer
         self.local_file_name = local_file_name
-        self.energy_output_tablename = "{}_".format(energy_comp_tablename)
-        self.energy_relevence_tablename = "{}_".format(energy_comp_tablename)
+        self.energy_output_tablename = "{}_outputs".format(energy_comp_table_name)
+        self.energy_relevence_tablename = "{}_relevence".format(energy_comp_table_name)
         if self.target_graph == "charged":
             self.update_species_comp = ReadSpeciesFromChargedGraph()
         else:
@@ -387,8 +388,9 @@ class ReduceGraphByEnergyReducer (Computation):
         """Method to update the species energies in the reaction graph from the computation"""
         comp_out = model_lookup_by_table_name(self.energy_output_tablename)
         relevence_model = model_lookup_by_table_name(self.energy_relevence_tablename)
+        relevant_ids = db_session.query(relevence_model.id)
         sids_energies = db_session.query(comp_out.id, comp_out.energy).filter(
-                        comp_out.good_geometry & comp_out.successful).in_(relevence_model.id).all()
+                        comp_out.good_geometry & comp_out.successful & comp_out.id.in_(relevant_ids)).all()
         for sid, energy in sids_energies:
             if rxn_graph.has_specie_id(sid):
                 specie = rxn_graph.get_specie_from_id(sid)
@@ -399,8 +401,9 @@ class ReduceGraphByEnergyReducer (Computation):
         """Method to reduce species with bad geometries from graph"""
         comp_out = model_lookup_by_table_name(self.energy_output_tablename)
         relevence_model = model_lookup_by_table_name(self.energy_relevence_tablename)
+        relevant_ids = db_session.query(relevence_model.id)
         sids = db_session.query(comp_out.id).filter(
-                        ~(comp_out.good_geometry & comp_out.successful)).in_(relevence_model.id).all()
+                        ~(comp_out.good_geometry & comp_out.successful) & comp_out.id.in_(relevant_ids)).all()
         # removing IDs from graph
         for sid in sids:
             sid = sid[0]
