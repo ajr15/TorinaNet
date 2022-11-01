@@ -149,8 +149,6 @@ def max_metric_mvc(rxn_graph: BaseRxnGraph, greedy_metric: str, covered_reaction
             return [rxn_graph.get_specie_from_id(s) for s in list(mvc)]
         # else, add specie to MVC
         else:
-            if verbose > 0:
-                print("Found MVC !")
             mvc.add(rxn_graph.make_unique_id(specie))
             # clear the network from dependent reactions
             _rxn_graph = _rxn_graph.remove_specie(s)

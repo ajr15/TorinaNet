@@ -70,7 +70,7 @@ class Enumerator:
         for comp in self.pipeline:
             # delete the "relevance" recods for external computations - these are set on each run independently
             if isinstance(comp, comps.ExternalCalculation):
-                self.session.query(comp.relevence_model).delete()
+                self.session.query(comp.relevance_model).delete()
         self.session.commit()
 
     def load_uncharged_graph(self) -> tn.core.RxnGraph:

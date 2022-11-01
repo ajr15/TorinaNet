@@ -61,17 +61,17 @@ class ReadSpeciesFromChargedGraph (Computation):
             rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="charged_rxn_graph_path").one()[0]
             rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         entries = []
-        # updating significance of existing species
+        # updating relevance of existing species
         existing_sids = db_session.query(self.sql_model.id).all()
         for sid in existing_sids:
             specie = db_session.execute(select(self.sql_model).filter_by(id=sid[0])).scalar_one()
             if rxn_graph.has_specie_id(sid[0]):
                 specie.relevant = True
             else:
-                # updating relevence = False
+                # updating relevance
                 specie.relevant = False
         db_session.commit()
-        # adding new species to table
+        # adding new species to table - ALL relevant by definition
         for specie in rxn_graph.species:
             sid = rxn_graph.make_unique_id(specie)
             if not db_session.query(exists().where(self.sql_model.id == sid)).one()[0]:
@@ -164,7 +164,7 @@ class ExternalCalculation (SlurmComputation):
         self.output_ext = output_extension
         self.specie_tablename = specie_tablename
         # creating relevance table for computation results
-        self.relevence_model = comp_sql_model_creator("{}_relevence".format(name), {"iteration": Column(Integer)})
+        self.relevance_model = comp_sql_model_creator("{}_relevance".format(name), {"iteration": Column(Integer)})
         super().__init__(slurm_client)
 
     def single_calc(self, xyz_path, comp_dir, sid, charge):
@@ -203,12 +203,12 @@ class ExternalCalculation (SlurmComputation):
         charge_table = model_lookup_by_table_name(ReadSpeciesFromChargedGraph.tablename)
         if not self.specie_tablename:
             sids = db_session.query(charge_table.id).filter_by(relevant=True).except_(db_session.query(self.sql_model.id)).all()
-            relevent_sids = db_session.query(charge_table.id).filter_by(relevant=True).except_(db_session.query(self.relevence_model.id)).all()
+            relevent_sids = db_session.query(charge_table.id).filter_by(relevant=True).except_(db_session.query(self.relevance_model.id)).all()
         else:
             custom_table = model_lookup_by_table_name(self.specie_tablename)
             sids = db_session.query(custom_table.id).except_(db_session.query(self.sql_model.id)).all()
-            relevent_sids = db_session.query(custom_table.id).except_(db_session.query(self.relevence_model.id)).all()
-        entries = [self.relevence_model(id=sid[0], iteration=iter_count) for sid in relevent_sids]
+            relevent_sids = db_session.query(custom_table.id).except_(db_session.query(self.relevance_model.id)).all()
+        entries = [self.relevance_model(id=sid[0], iteration=iter_count) for sid in relevent_sids]
         cmds = []
         for sid in sids:
             sid = sid[0] # artifact of SQL query results - returns tuples
@@ -377,7 +377,7 @@ class ReduceGraphByEnergyReducer (Computation):
         self.reducer = reducer
         self.local_file_name = local_file_name
         self.energy_output_tablename = "{}_outputs".format(energy_comp_table_name)
-        self.energy_relevence_tablename = "{}_relevence".format(energy_comp_table_name)
+        self.energy_relevance_tablename = "{}_relevance".format(energy_comp_table_name)
         if self.target_graph == "charged":
             self.update_species_comp = ReadSpeciesFromChargedGraph()
         else:
@@ -387,8 +387,8 @@ class ReduceGraphByEnergyReducer (Computation):
     def update_specie_energies(self, db_session, rxn_graph) -> tn.core.RxnGraph:
         """Method to update the species energies in the reaction graph from the computation"""
         comp_out = model_lookup_by_table_name(self.energy_output_tablename)
-        relevence_model = model_lookup_by_table_name(self.energy_relevence_tablename)
-        relevant_ids = db_session.query(relevence_model.id)
+        relevance_model = model_lookup_by_table_name(self.energy_relevance_tablename)
+        relevant_ids = db_session.query(relevance_model.id)
         sids_energies = db_session.query(comp_out.id, comp_out.energy).filter(
                         comp_out.good_geometry & comp_out.successful & comp_out.id.in_(relevant_ids)).all()
         for sid, energy in sids_energies:
@@ -400,8 +400,8 @@ class ReduceGraphByEnergyReducer (Computation):
     def reduce_bad_geometries(self, db_session, rxn_graph) -> tn.core.RxnGraph:
         """Method to reduce species with bad geometries from graph"""
         comp_out = model_lookup_by_table_name(self.energy_output_tablename)
-        relevence_model = model_lookup_by_table_name(self.energy_relevence_tablename)
-        relevant_ids = db_session.query(relevence_model.id)
+        relevance_model = model_lookup_by_table_name(self.energy_relevance_tablename)
+        relevant_ids = db_session.query(relevance_model.id)
         sids = db_session.query(comp_out.id).filter(
                         ~(comp_out.good_geometry & comp_out.successful) & comp_out.id.in_(relevant_ids)).all()
         # removing IDs from graph
