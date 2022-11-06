@@ -57,10 +57,20 @@ class Enumerator:
         if not os.path.isdir(self.results_dir):
             os.makedirs(self.results_dir)
         # properly saves reaction graph
-        rxn_graph_path = os.path.join(self.results_dir, "uncharged.rxn")
         if self.rxn_graph.use_charge:
-            self.rxn_graph = self.rxn_graph.uncharge()
-        self.rxn_graph.save(rxn_graph_path)
+            # saving charged graph
+            rxn_graph_path = os.path.join(self.results_dir, "charged.rxn")
+            self.rxn_graph.save(rxn_graph_path)
+            # uncharging and saving uncharged graph
+            uncharged_rxn_graph = self.rxn_graph.__class__(use_charge=False)
+            for r in self.rxn_graph.reactions:
+                uncharged_rxn_graph.add_reaction(r)
+            uncharged_rxn_graph.set_source_species(self.rxn_graph.source_species)                
+            rxn_graph_path = os.path.join(self.results_dir, "uncharged.rxn")
+            uncharged_rxn_graph.save(rxn_graph_path)
+        else:
+            rxn_graph_path = os.path.join(self.results_dir, "uncharged.rxn")
+            self.rxn_graph.save(rxn_graph_path)
         # loading config settings
         self._load_setting("results_dir", self.results_dir, overwrite=True)
         self._load_setting("uncharged_rxn_graph_path", rxn_graph_path, overwrite)
@@ -71,6 +81,11 @@ class Enumerator:
             # delete the "relevance" recods for external computations - these are set on each run independently
             if isinstance(comp, comps.ExternalCalculation):
                 self.session.query(comp.relevance_model).delete()
+                # adding reactant relevance entries (always reactants are relevant)
+                entries = []
+                for s in self.rxn_graph.source_species:
+                    entries.append(comp.relevance_model(id=s._get_charged_id_str(), iteration=0))
+                self.session.add_all(entries)
         self.session.commit()
 
     def load_uncharged_graph(self) -> tn.core.RxnGraph:
