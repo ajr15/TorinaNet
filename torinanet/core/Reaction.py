@@ -23,12 +23,18 @@ class Reaction:
             self.properties = {}
         else:
             self.properties = properties
+        self._to_convension()
+
+    def _to_convension(self):
+        """Method to transform the reaction to a conventional one (makes _id_properties and sorts reactants/products)"""
+        self.reactants = sorted(self.reactants, key=lambda s: s._id_properties["determinant"])
+        self.products = sorted(self.products, key=lambda s: s._id_properties["determinant"])
         self._id_properties = {
-                "r_ac_det": round(np.prod([np.linalg.det(r.ac_matrix.matrix) for r in self.reactants])),
-                "p_ac_det": round(np.prod([np.linalg.det(r.ac_matrix.matrix) for r in self.products])),
-                "r_num": len(self.reactants),
-                "p_num": len(self.products)
-            }
+            "r_dets": [s._id_properties["determinant"] for s in self.reactants],
+            "r_atoms":[s._id_properties["number_of_atoms"] for s in self.reactants],
+            "p_dets": [s._id_properties["determinant"] for s in self.products],
+            "p_atoms": [s._id_properties["number_of_atoms"] for s in self.products]
+        }
 
     @staticmethod
     def from_ac_matrices(reactants, products):
@@ -58,30 +64,19 @@ class Reaction:
             # if reactant is not mutual with reactants - add to reaction
             if not sid in mutual:
                 ajr.products.append(s)
-
-        # calculating reaction's properties
-        ajr._id_properties['r_num'] = len(ajr.reactants)
-        ajr._id_properties['p_num'] = len(ajr.products)
-        ajr._id_properties['r_ac_det'] = round(np.prod([s._id_properties["determinant"] for s in ajr.reactants]))
-        ajr._id_properties['p_ac_det'] = round(np.prod([s._id_properties["determinant"] for s in ajr.products]))
+        # making reaction conventional
+        ajr._to_convension()
         return ajr
 
-
     def _get_id_str(self):
-        s = ''
-        for k in ['r_ac_det', 'p_ac_det', 'r_num', 'p_num']:
-            if k in self._id_properties.keys():
-                s += "_" + k + "_" + str(self._id_properties[k])
-            else:
-                s += k + "_NONE"
-        return s
-
+        r_strs = ["{}:{}".format(det, n) for det, n in zip(self._id_properties["r_dets"], self._id_properties["r_atoms"])]
+        p_strs = ["{}:{}".format(det, n) for det, n in zip(self._id_properties["p_dets"], self._id_properties["p_atoms"])]
+        return "r{}p{}".format(".".join(r_strs), ".".join(self._id_properties[p_strs]))
 
     def _get_charged_id_str(self):
-        s = self._get_id_str()
-        return s + "_rcharges_{}_pcharges_{}".format(";".join([str(s.charge) for s in self.reactants]),
-                                                        ";".join([str(s.charge) for s in self.products]))
-
+        r_strs = ["{}:{}:{}".format(det, n, int(s.charge)) for det, n, s in zip(self._id_properties["r_dets"], self._id_properties["r_atoms"], self.reactants)]
+        p_strs = ["{}:{}:{}".format(det, n, int(s.charge)) for det, n, s in zip(self._id_properties["p_dets"], self._id_properties["p_atoms"], self.products)]
+        return "r{}p{}".format(".".join(r_strs), ".".join(p_strs))
 
     def has_total_charge(self):
         """Method to check if a reaction has a defined total charge"""
