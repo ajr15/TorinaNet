@@ -57,16 +57,17 @@ class RxnGraph (BaseRxnGraph):
         # checking if reaction is not in graph
         rxn_id = self.make_unique_id(reaction)
         if len(self.reactions) == 0 or not rxn_id in self._rxn_ids:
+            ajr = Reaction(None, None, {}) # init from empty values, just like in Reaction.from_ac_matrices
             # converting reaction species by graph species (and adds new species to graph)
-            reactants = []
             for s in reaction.reactants:
-                reactants.append(self.add_specie(s))
-            products = []
+                ajr.reactants.append(self.add_specie(s))
             for s in reaction.products:
-                products.append(self.add_specie(s))
+                ajr.products.append(self.add_specie(s))
+            # updating properties
+            ajr.properties.update(reaction.properties)
             # adds reaction with graph species
             self._rxn_ids[rxn_id] = len(self.reactions) # assign idx in graph for specie
-            self._reactions.append(Reaction(reactants, products, reaction.properties))
+            self._reactions.append(ajr)
 
 
     def compare_species(self, rxn_graph) -> List[Specie]:

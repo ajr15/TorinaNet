@@ -60,7 +60,7 @@ class BinaryAcMatrix (AcMatrix):
                 obmol.AddHydrogens()
             return cls.from_obmol(obmol)
         else:
-            return BinaryAcMatrix(specie.ac_matrix.matrix)
+            return BinaryAcMatrix(specie.ac_matrix.matrix.copy())
 
     @staticmethod
     def from_obmol(obmol):
