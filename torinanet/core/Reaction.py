@@ -71,7 +71,7 @@ class Reaction:
     def _get_id_str(self):
         r_strs = ["{}:{}".format(det, n) for det, n in zip(self._id_properties["r_dets"], self._id_properties["r_atoms"])]
         p_strs = ["{}:{}".format(det, n) for det, n in zip(self._id_properties["p_dets"], self._id_properties["p_atoms"])]
-        return "r{}p{}".format(".".join(r_strs), ".".join(self._id_properties[p_strs]))
+        return "r{}p{}".format(".".join(r_strs), ".".join(p_strs))
 
     def _get_charged_id_str(self):
         r_strs = ["{}:{}:{}".format(det, n, int(s.charge)) for det, n, s in zip(self._id_properties["r_dets"], self._id_properties["r_atoms"], self.reactants)]

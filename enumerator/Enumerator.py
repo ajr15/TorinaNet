@@ -145,14 +145,6 @@ class SimpleEnumerator (Enumerator):
                     max_mvc_samples: int=300,
                     n_mvc_trails: int=5,
                     mvc_metric: str="degree",
-                    use_kinetics: bool=True,
-                    reaction_rate_th: float=2.11e-17, # rate corresponding to "effective barrier" of 40 kcal/mol in 298 K
-                    rate_constant_property: str="k", 
-                    simulation_time: float=100, 
-                    timestep: float=0.01, 
-                    reactant_concs: Optional[str]=None, 
-                    temperature: float=298,
-                    kinetic_solver_kwargs: dict={},
                     reflect: bool=True):
         # parsing input kwargs
         self.parse_inputs(max_changing_bonds,
@@ -200,21 +192,6 @@ class SimpleEnumerator (Enumerator):
                             "charged",
                             "mvc_energy_reduced_graph.rxn",
                             energy_comp_table_name="energy_comp")]
-            if use_kinetics:
-                pipeline += [comps.ReduceGraphByEnergyReducer(
-                                tn.analyze.network_reduction.KineticReduction.SimpleKineticsReduction(reaction_rate_th, 
-                                                                                                    rate_constant_property, 
-                                                                                                    simulation_time, 
-                                                                                                    timestep, 
-                                                                                                    reactant_concs, 
-                                                                                                    temperature,
-                                                                                                    energy_conversion_factor=4.359744e-18, 
-                                                                                                    specie_energy_property_name="energy", 
-                                                                                                    estimate_max_constants=True,
-                                                                                                    **kinetic_solver_kwargs),
-                                "charged",
-                                "mvc_kinetic_reduced_graph.rxn",
-                                energy_comp_tablename="energy_comp")]
         # now, calculating energies for every specie in graph
         pipeline += [comps.ExternalCalculation(slurm_client, self.program, self.input_type, self.comp_kwdict, self.output_type.extension, name="energy_comp"),
             # read computation results
@@ -227,22 +204,7 @@ class SimpleEnumerator (Enumerator):
                 "charged",
                 "energy_reduced_graph.rxn",
                 energy_comp_table_name="energy_comp")]
-        if use_kinetics:
-            pipeline += [comps.ReduceGraphByEnergyReducer(
-                            tn.analyze.network_reduction.KineticReduction.SimpleKineticsReduction(reaction_rate_th, 
-                                                                                                rate_constant_property, 
-                                                                                                simulation_time, 
-                                                                                                timestep, 
-                                                                                                reactant_concs, 
-                                                                                                temperature,
-                                                                                                energy_conversion_factor=4.359744e-18, 
-                                                                                                specie_energy_property_name="energy", 
-                                                                                                estimate_max_constants=True,
-                                                                                                comp_output_table_name="energy_comp"
-                                                                                                **kinetic_solver_kwargs),
-                            "charged",
-                            "kinetic_reduced_graph.rxn")]
-            # uncharging charged graph
+        # uncharging charged graph
         pipeline += [comps.UnchargeGraph()]
         super().__init__(rxn_graph, pipeline, n_iter, results_dir, reflect)
 
