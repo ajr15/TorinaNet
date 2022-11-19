@@ -65,6 +65,7 @@ class RxnGraph (BaseRxnGraph):
                 ajr.products.append(self.add_specie(s))
             # updating properties
             ajr.properties.update(reaction.properties)
+            ajr._to_convension()
             # adds reaction with graph species
             self._rxn_ids[rxn_id] = len(self.reactions) # assign idx in graph for specie
             self._reactions.append(ajr)
