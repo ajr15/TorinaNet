@@ -69,14 +69,14 @@ class Reaction:
         return ajr
 
     def _get_id_str(self):
-        r_strs = ["{}:{}".format(det, n) for det, n in zip(self._id_properties["r_dets"], self._id_properties["r_atoms"])]
-        p_strs = ["{}:{}".format(det, n) for det, n in zip(self._id_properties["p_dets"], self._id_properties["p_atoms"])]
+        r_strs = [s._get_id_str() for s in self.reactants]
+        p_strs = [s._get_id_str() for s in self.products]
         return "r{}p{}".format(".".join(r_strs), ".".join(p_strs))
 
     def _get_charged_id_str(self):
-        r_strs = ["{}:{}:{}".format(det, n, int(s.charge)) for det, n, s in zip(self._id_properties["r_dets"], self._id_properties["r_atoms"], self.reactants)]
-        p_strs = ["{}:{}:{}".format(det, n, int(s.charge)) for det, n, s in zip(self._id_properties["p_dets"], self._id_properties["p_atoms"], self.products)]
-        return "r{}p{}".format(".".join(r_strs), ".".join(p_strs))
+        r_strs = [s._get_charged_id_str() for s in self.reactants]
+        p_strs = [s._get_charged_id_str() for s in self.products]
+        return "{}={}".format("+".join(r_strs), "+".join(p_strs))
 
     def has_total_charge(self):
         """Method to check if a reaction has a defined total charge"""

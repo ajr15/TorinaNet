@@ -8,6 +8,18 @@ class AcMatrix (ABC):
     @abstractclassmethod
     def __init__(self, matrix):
         self.matrix = matrix
+        self.uid = None
+
+
+    def get_uid(self) -> str:
+        if self.uid is not None:
+            return self.uid
+        else:
+            eigens = np.linalg.eigvalsh(self.matrix)
+            poly = np.poly(eigens)
+            self.uid = "".join(["{:0>5d}".format(abs(int(round(x, 0)))) for x in poly[1:]])
+            return self.uid
+
 
     @abstractclassmethod
     def get_atom(self, i):

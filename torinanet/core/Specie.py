@@ -34,18 +34,12 @@ class Specie:
         return s
 
     def _get_id_str(self):
-        s = ''
-        for k in ['determinant', 'number_of_atoms']:
-            if k in self._id_properties.keys():
-                s += "_" + k + "_" + str(self._id_properties[k])
-            else:
-                s += k + "_NONE"
-        return s
+        return self.ac_matrix.get_uid()
 
 
     def _get_charged_id_str(self):
         s = self._get_id_str()
-        return s + "_charge_{}".format(int(self.charge) if not self.charge is None else "None")
+        return s + "#{}".format(int(self.charge) if not self.charge is None else "None")
         
 
     def has_charge(self):
