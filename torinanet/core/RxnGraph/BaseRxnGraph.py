@@ -245,7 +245,7 @@ class BaseRxnGraph (ABC):
         # building a copy of RxnGraph without specie
         nrxn_graph = self.__class__(use_charge=self.use_charge)
         for rxn_id in keep_ids:
-            if not "number_of_atoms" in rxn_id: # keep_ids has also specie ids in it... this is filtering it. TODO: make it better
+            if "=" in rxn_id: # keep_ids has also specie ids in it... this is filtering it. TODO: make it better
                 if rxn_id in rxns_to_remove:
                     continue
                 else:
@@ -276,7 +276,7 @@ class BaseRxnGraph (ABC):
         # building a copy of RxnGraph without specie
         nrxn_graph = self.__class__(use_charge=self.use_charge)
         for rxn_id in keep_ids:
-            if not "number_of_atoms" in rxn_id: # same problem as in remove_specie..
+            if "=" in rxn_id: # same problem as in remove_specie..
                 rxn = self.get_reaction_from_id(rxn_id)
                 nrxn_graph.add_reaction(rxn)
         # making sure nrxn has the same reactant species as parent graph

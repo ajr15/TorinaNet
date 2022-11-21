@@ -297,7 +297,7 @@ class ReadCompOutput (DaskComputation):
         futures = []
         for sid in sids:
             sid = sid[0] # artifact of SQL query - returns tuple
-            uncharged_sid = sid.split("charge")[0][:-1] # MUST "uncharge" the ID, for querying the build table
+            uncharged_sid = sid.split("#")[0] # MUST "uncharge" the ID, for querying the build table
                                                         # TODO: find a better way to do it
             xyz_path = db_session.query(build_table.xyz_path).filter_by(id=uncharged_sid).one()[0]
             output_path = db_session.query(comp_table.output_path).filter_by(id=sid).one()[0]
