@@ -1,4 +1,3 @@
-from click import Option
 import numpy as np
 from typing import List, Optional
 from .Specie import Specie
@@ -71,7 +70,7 @@ class Reaction:
     def _get_id_str(self):
         r_strs = [s._get_id_str() for s in self.reactants]
         p_strs = [s._get_id_str() for s in self.products]
-        return "r{}p{}".format(".".join(r_strs), ".".join(p_strs))
+        return "{}={}".format("+".join(r_strs), "+".join(p_strs))
 
     def _get_charged_id_str(self):
         r_strs = [s._get_charged_id_str() for s in self.reactants]
