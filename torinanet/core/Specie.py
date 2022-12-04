@@ -39,7 +39,13 @@ class Specie:
 
     def _get_charged_id_str(self):
         s = self._get_id_str()
-        return s + "#{}".format(int(self.charge) if not self.charge is None else "None")
+        try:
+            charge = int(self.charge)
+        except ValueError:
+            charge = "None"
+        except TypeError:
+            charge = "None"
+        return s + "#{}".format(charge)
         
 
     def has_charge(self):

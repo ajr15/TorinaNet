@@ -9,10 +9,7 @@ from typing import Optional
 class BinaryAcMatrix (AcMatrix):
     """Binary AC matrix object"""
 
-    def __init__(self, matrix: Optional[np.ndarray]=None):
-        self.matrix = matrix
-        self.uid = None
-    
+
     def get_atom(self, i: int):
         # the diagonal of the ac matrix is the list of atomic number
         if i > len(self.matrix):

@@ -1,5 +1,3 @@
-# utils file for running reaction enumeration jobs on a cluster
-# upgraded version of the enumerate reactions script
 import shutil
 from sqlalchemy import Column, ForeignKey, Integer, String, Boolean
 from sqlalchemy.sql import exists, select
@@ -184,7 +182,15 @@ class ExternalCalculation (SlurmComputation):
         infile = self.input_type(in_file_path)
         kwds = copy(self.comp_kwdict)
         kwds["charge"] = charge
-        kwds["mult"] = (n_elec + kwds["charge"]) % 2 + 1
+        # correcting for unique case of oxygen molecule - triplet ground state
+        if all([atom.symbol == "O" for atom in molecule.atoms]) and len(molecule.atoms) == 2:
+            kwds["mult"] = 3
+        else:
+            obmol = molecule_to_obmol(molecule)
+            obmol.AssignSpinMultiplicity(True)
+            # use openbabel to estimate multiplicities
+            kwds["mult"] = obmol.GetTotalSpinMultiplicity()
+            # kwds["mult"] = (n_elec + kwds["charge"]) % 2 + 1
         infile.write_file(molecule, kwds)
         return entry, self.program.run_command(in_file_path)
 

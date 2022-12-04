@@ -63,9 +63,9 @@ def greedy_mvc(rxn_graph: BaseRxnGraph, greedy_metric: str, only_products: bool=
             return [rxn_graph.get_specie_from_id(s) for s in list(mvc)]
 
         if verbose > 0:
-            print("covered {} out of {} ({:.2f}%)".format(n_reactions - len(_rxn_graph.reactions) + len(covered_reactions),
-                                                          n_reactions, (n_reactions - len(_rxn_graph.reactions) + len(covered_reactions)) /
-                                                                            n_reactions * 100))
+            n_left_reactions = len(list(remained_reactions.difference(covered_reactions))) 
+            print("covered {} out of {} ({:.2f}%)".format(n_reactions - n_left_reactions,
+                                                          n_reactions, (1 - n_left_reactions / n_reactions) * 100))
         # randomly select reaction (all are uncovered)
         rxn = np.random.choice(_rxn_graph.reactions)
         if _rxn_graph.make_unique_id(rxn) in covered_reactions:
@@ -130,9 +130,9 @@ def max_metric_mvc(rxn_graph: BaseRxnGraph, greedy_metric: str, covered_reaction
             return [rxn_graph.get_specie_from_id(s) for s in list(mvc)]
 
         if verbose > 0:
-            print("covered {} out of {} ({:.2f}%)".format(n_reactions - len(_rxn_graph.reactions) + len(covered_reactions),
-                                                          n_reactions, (n_reactions - len(_rxn_graph.reactions) + len(covered_reactions)) /
-                                                                            n_reactions * 100))
+            n_left_reactions = len(list(remained_reactions.difference(covered_reactions))) 
+            print("covered {} out of {} ({:.2f}%)".format(n_reactions - n_left_reactions,
+                                                          n_reactions, (1 - n_left_reactions / n_reactions) * 100))
         # select uncovered reaction with maximum metric value
         G = _rxn_graph.to_networkx_graph(use_internal_id=True)
         max_metric = 0
@@ -146,9 +146,11 @@ def max_metric_mvc(rxn_graph: BaseRxnGraph, greedy_metric: str, covered_reaction
                     specie = s
         # if no specie is found, we have an mvc!
         if specie is None:
+            if verbose > 0:
+                print("Found MVC !")
             return [rxn_graph.get_specie_from_id(s) for s in list(mvc)]
         # else, add specie to MVC
         else:
             mvc.add(rxn_graph.make_unique_id(specie))
             # clear the network from dependent reactions
-            _rxn_graph = _rxn_graph.remove_specie(s)
+            _rxn_graph = _rxn_graph.remove_specie(specie)

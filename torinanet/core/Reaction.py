@@ -27,8 +27,8 @@ class Reaction:
 
     def _to_convension(self):
         """Method to transform the reaction to a conventional one (makes _id_properties and sorts reactants/products)"""
-        self.reactants = sorted(self.reactants, key=lambda s: s._id_properties["determinant"])
-        self.products = sorted(self.products, key=lambda s: s._id_properties["determinant"])
+        self.reactants = sorted(self.reactants, key=lambda s: s._get_charged_id_str())
+        self.products = sorted(self.products, key=lambda s: s._get_charged_id_str())
         self._id_properties = {
             "r_dets": [s._id_properties["determinant"] for s in self.reactants],
             "r_atoms":[s._id_properties["number_of_atoms"] for s in self.reactants],
@@ -71,7 +71,7 @@ class Reaction:
     def _get_id_str(self):
         r_strs = [s._get_id_str() for s in self.reactants]
         p_strs = [s._get_id_str() for s in self.products]
-        return "r{}p{}".format(".".join(r_strs), ".".join(p_strs))
+        return "{}={}".format("+".join(r_strs), "+".join(p_strs))
 
     def _get_charged_id_str(self):
         r_strs = [s._get_charged_id_str() for s in self.reactants]
