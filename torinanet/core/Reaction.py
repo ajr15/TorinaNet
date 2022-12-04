@@ -1,4 +1,3 @@
-from click import Option
 import numpy as np
 from typing import List, Optional
 from .Specie import Specie
