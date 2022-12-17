@@ -53,10 +53,5 @@ class Specie:
         return self.charge is not None
 
     def __eq__(self, x):
-        # if not equal check properties
-        conditions = []
-        keys = set(list(self._id_properties.keys()) + list(x._id_properties.keys()))
-        for k in keys:
-            if k in self._id_properties.keys() and k in x._id_properties.keys():
-                conditions.append(self._id_properties[k] == x._id_properties[k])
-        return all(conditions)
+        # check if hash strings are the same
+        return self._get_charged_id_str() == x._get_charged_id_str()

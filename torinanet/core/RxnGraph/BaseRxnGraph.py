@@ -439,3 +439,20 @@ class BaseRxnGraph (ABC):
     def update_reaction(self, reaction: Reaction):
         """Method to update exisiting reaction entry with a different one"""
         raise NotImplementedError("Cannot update reaction's properties in this reaction graph type")
+
+    def is_equal(self, x):
+        """Check if graph is equal to another"""
+        if not isinstance(x, BaseRxnGraph):
+            raise ValueError("Can compare only 2 reaction graphs")
+        net1 = self.to_networkx_graph(use_internal_id=True)
+        net2 = x.to_networkx_graph(use_internal_id=True)
+        # using the networkx comparision mechanism
+        return net1.edges == net2.edges and net1.nodes == net2.nodes
+
+    def __eq__(self, x):
+        if not isinstance(x, BaseRxnGraph):
+            raise ValueError("Can compare only 2 reaction graphs")
+        net1 = self.to_networkx_graph(use_internal_id=True)
+        net2 = x.to_networkx_graph(use_internal_id=True)
+        # using the networkx comparision mechanism
+        return net1.edges == net2.edges and net1.nodes == net2.nodes

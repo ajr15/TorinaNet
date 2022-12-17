@@ -553,6 +553,8 @@ class FindMvc (Computation):
         self.n_trails = n_trails
         self.max_samples = max_samples
         self.metric = metric
+        self.greedy_finder = tn.analyze.algorithms.vertex_cover.GreedyMvcFinder(metric)
+        self.stochastic_finder = tn.analyze.algorithms.vertex_cover.StochasticMvcFinder(metric, max_samples, max_samples)
         super().__init__()
 
     def execute(self, db_session) -> List[SqlBase]:
@@ -566,14 +568,14 @@ class FindMvc (Computation):
         mvc = []
         min_mvc_l = len(rxn_graph.species)
         for _ in range(self.n_trails):
-            candidate = tn.analyze.algorithms.greedy_mvc(rxn_graph, self.metric, only_products=True,
-                                                          covered_species=covered_species, max_samples=self.max_samples)
-            if len(candidate) < min_mvc_l and len(candidate) > 0:
-                mvc = candidate
-                min_mvc_l = len(mvc)
+            candidate = self.stochastic_finder.find_mvc(rxn_graph)
+            if candidate is not None:
+                if len(candidate) < min_mvc_l and len(candidate) > 0:
+                    mvc = candidate
+                    min_mvc_l = len(mvc)
         # if no MVC is found stochastically, find MVC deterministically 
         if len(mvc) == 0:
-            mvc = tn.analyze.algorithms.max_metric_mvc(rxn_graph, self.metric, covered_species=covered_species)
+            mvc = self.greedy_finder.find_mvc(rxn_graph)
         # inserting MVC data to database
         print("Found MVC with {} species".format(len(mvc)))
         iter_count = \
