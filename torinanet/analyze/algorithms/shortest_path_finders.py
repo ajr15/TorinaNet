@@ -1,9 +1,9 @@
-from ...core.RxnGraph import BaseRxnGraph
+from ...core.RxnGraph import RxnGraph
 from typing import Callable, Optional
 import numpy as np
 import pandas as pd
 
-def dijkstra_shortest_path(rxn_graph: BaseRxnGraph, prop_func: Optional[Callable]=None):
+def dijkstra_shortest_path(rxn_graph: RxnGraph, prop_func: Optional[Callable]=None):
     """Method to implement modified dijkstra's algorithm for finding distance between specie to the source of the network (reactants)"""
     # making property function
     if not prop_func:

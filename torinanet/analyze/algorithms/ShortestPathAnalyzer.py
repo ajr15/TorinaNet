@@ -2,7 +2,7 @@ from typing import Callable, List, Optional
 
 from ...core.Reaction import Reaction
 from .shortest_path_finders import dijkstra_shortest_path
-from ...core.RxnGraph.BaseRxnGraph import BaseRxnGraph
+from ...core.RxnGraph.RxnGraph import RxnGraph
 from ...core.Specie import Specie
 
 
@@ -10,7 +10,7 @@ class ShortestPathAnalyzer:
 
     """Analyzer to get shortest path from every specie to graph source"""
 
-    def __init__(self, rxn_graph: BaseRxnGraph, shortest_path_finder=dijkstra_shortest_path, prop_func: Optional[Callable]=None) -> None:
+    def __init__(self, rxn_graph: RxnGraph, shortest_path_finder=dijkstra_shortest_path, prop_func: Optional[Callable]=None) -> None:
         self.rxn_graph = rxn_graph
         self.networkx_graph = rxn_graph.to_networkx_graph(use_internal_id=True)
         self.shortest_path_table = shortest_path_finder(rxn_graph, prop_func)

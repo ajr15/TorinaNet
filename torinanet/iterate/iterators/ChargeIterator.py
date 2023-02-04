@@ -3,7 +3,7 @@ from typing import List
 from ...core.Reaction import Reaction
 from ...core.Specie import Specie
 from ..filters.charge_filters import MaxAbsCharge
-from ...core.RxnGraph.BaseRxnGraph import BaseRxnGraph
+from ...core.RxnGraph.RxnGraph import RxnGraph
 from itertools import product
 
 
@@ -11,7 +11,7 @@ class ChargeIterator:
 
     """Iterator object to add charged specie reactions to a reaction graph"""
 
-    def __init__(self, uncharged_rxn_graph: BaseRxnGraph, charged_rxn_grph_type: BaseRxnGraph):
+    def __init__(self, uncharged_rxn_graph: RxnGraph, charged_rxn_grph_type: RxnGraph):
         self.uncharged_rxn_graph = uncharged_rxn_graph
         self.charged_rxn_grph_type = charged_rxn_grph_type
 
@@ -85,7 +85,7 @@ class ChargeIterator:
                     yield Reaction([_specie], [charged_specie])
 
 
-    def enumerate_charges(self, max_reduction: int, max_oxidation: int, charge_filters, verbose=1) -> BaseRxnGraph:
+    def enumerate_charges(self, max_reduction: int, max_oxidation: int, charge_filters, verbose=1) -> RxnGraph:
         """Method to add charge information to uncharged reaction graph."""
         # initializing run
         charged_rxn_graph = self.charged_rxn_grph_type(use_charge=True)

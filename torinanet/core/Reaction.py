@@ -40,31 +40,30 @@ class Reaction:
         ajr = Reaction(None, None, {}) # must instanciate with explicit values (unclear why, probably some memory managment bug)
         # first reading products from joint ac matrix
         products_acs = products.get_compoenents()
-        products = [Specie.from_ac_matrix(ac) for ac in products_acs]
-        prod_sids = [s._get_charged_id_str() for s in products]
+        products = [ac.to_specie() for ac in products_acs]
         # adding reactants and making sure that all are consumed in the reaction (no reactions like A + B -> A + C)
         # this is done by checking if a reactants appears in the products
         reactants_acs = reactants.get_compoenents()
-        reactants = [Specie.from_ac_matrix(ac) for ac in reactants_acs]
-        # getting mutual species & adding reactants
+        reactants = [ac.to_specie() for ac in reactants_acs]
+        # getting the "net" reactants and products
+        # transforming reactions of type A + B -> C + B to A -> C 
         ajr.reactants = []
-        mutual = set()
+        mutual = list()
         for s in reactants:
-            sid = s._get_charged_id_str()
-            # if reactant appears in the products, add it to joined list - DO NOT ADD TO REACTION
-            if sid in prod_sids:
-                mutual.add(sid)
-            # if reactant appears in the products, don't add reactant and remove product
+            # if a reactant appears in products, save it to a dedicated list
+            # make sure to "count" right, i.e. in case of A + B + B -> C + B add B only once
+            if products.count(s) > mutual.count(s):
+                mutual.append(s)
             else:
                 ajr.reactants.append(s)
         # adding products
         for s in products:
-            sid = s._get_charged_id_str()
-            # if reactant is not mutual with reactants - add to reaction
-            if not sid in mutual:
+            # if product is in mututal list dot add to products
+            if not s in mutual:
                 ajr.products.append(s)
-        # making reaction conventional
-        ajr._to_convension()
+            # if it does, remove from list (to deal with cases like A + B -> C + B + B)
+            else:
+                mutual.remove(s)
         return ajr
 
     def _get_id_str(self):
@@ -90,10 +89,10 @@ class Reaction:
 
 
     def __eq__(self, x):
-        # if not equal check properties
-        conditions = []
-        keys = set(list(self._id_properties.keys()) + list(x._id_properties.keys()))
-        for k in keys:
-            if k in self._id_properties.keys() and k in x._id_properties.keys():
-                conditions.append(self._id_properties[k] == x._id_properties[k])
-        return all(conditions)
+        if not type(x) is Reaction:
+            raise ValueError("Cannot compare reactions to object with type {}".format(type(x)))
+        if len(self.reactants) == len(x.reactants) and len(self.products) == len(x.products):
+            return all([s in self.reactants for s in x.reactants]) and all([s in self.products for s in x.products]) and \
+                    all([s in x.reactants for s in self.reactants]) and all([s in x.products for s in self.products])
+        else:
+            return False

@@ -3,7 +3,7 @@ import sys; sys.path.append("../..")
 import numpy as np
 from matplotlib import pyplot as plt
 from time import time
-from torinanet.core.RxnGraph.RxnGraph import RxnGraph as hashGraph
+from TorinaNet.torinanet.core.RxnGraph._RxnGraph import RxnGraph as hashGraph
 from torinanet.core.RxnGraph.vanillaRxnGraph import RxnGraph as linearGraph
 from torinanet.core.Reaction import Reaction
 from torinanet.core.AcMatrix.BinaryAcMatrix import BinaryAcMatrix

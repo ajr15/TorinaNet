@@ -1,55 +1,44 @@
-from scripts.config import TORINA_NET_DIR, TORINA_X_DIR
-import sys
-sys.path.append(TORINA_NET_DIR)
-sys.path.append(TORINA_X_DIR)
-import os
+from time import time
 import unittest
-import torinanet as tn
-
-
-def make_rxn_strings(rxn_graph: tn.core.RxnGraph):
-    strs = set()
-    for reaction in rxn_graph.reactions:
-        s = " + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.reactants]) + \
-                " -> " + \
-                " + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.products])
-        strs.add(s)
-    return strs
+from typing import List
+from torinanet.core import RxnGraph, Reaction, Specie
+from tests.utils import reaction_generator
 
 
 class TestRxnGraph (unittest.TestCase):
 
-    def setUp(self) -> None:
-        """Sets up a default graph for testing - decomposition of H2O molecule"""
-        # setting up graph
-        print("Setting up reaction graph...")
-        print("Using enumerated network of H2O decomposition with 2 macro-iterations")
-        rxn_graph = tn.core.RxnGraph()
-        rxn_graph.set_source_species([tn.core.Specie("O")], force=True)
-        stop_cond = tn.iterate.stop_conditions.MaxIterNumber(1)
-        ac_filters = [tn.iterate.ac_matrix_filters.MaxBondsPerAtom()]
-        conversion_filters = [tn.iterate.conversion_matrix_filters.MaxChangingBonds(2), 
-                                tn.iterate.conversion_matrix_filters.OnlySingleBonds()]
-        iterator = tn.iterate.iterators.Iterator(rxn_graph)
-        self.h2o_graph = iterator.enumerate_reactions(conversion_filters, ac_filters, stop_cond, verbose=0)
-        print("DONE SETUP")
+    @staticmethod
+    def make_rxn_string(reaction: Reaction) -> str:
+        s = " + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.reactants]) + \
+            " -> " + \
+            " + ".join([s.ac_matrix.to_specie().identifier.strip() for s in reaction.products])
+        return s
 
-    def test_save_graph(self):
+    @classmethod
+    def make_graph(cls, n_reactions: int, seed_species: List[Specie], max_changing_bonds: int=4):
+        print("Making reaction graph")
+        rxn_graph = RxnGraph()
+        ntrails = 0
+        for rxn in reaction_generator(seed_species, max_changing_bonds):
+            ntrails += 1
+            print("Adding {} n_reactions = {}, n_species = {}".format(cls.make_rxn_string(rxn), rxn_graph.get_n_reactions(), rxn_graph.get_n_species()))
+            rxn_graph.add_reaction(rxn)
+            if rxn_graph.get_n_reactions() >= n_reactions:
+                return rxn_graph, ntrails
+    
+    def test_add_method(self):
         """Testing the method for saving graph data"""
-        print("Testing the rxn_graph.save method")
-        original_rxn_strs = make_rxn_strings(self.h2o_graph)
-        print("saving graph")
-        graph_path = "./test.rxn"
-        self.h2o_graph.save(graph_path)
-        self.assertTrue(os.path.isfile(graph_path))
-        print("testing saved graph")
-        read_graph = tn.core.RxnGraph.from_file(graph_path)
-        rxn_strs = make_rxn_strings(read_graph)
-        self.assertTrue(rxn_strs == original_rxn_strs)
-        original_source = set([self.h2o_graph.make_unique_id(s) for s in self.h2o_graph.source_species])
-        read_source = set([self.h2o_graph.make_unique_id(s) for s in read_graph.source_species])
-        self.assertTrue(original_source == read_source)
+        species = [Specie("c1ccccc1"), Specie("O=O"), Specie("N")]
+        t1 = time()
+        _, ntrails = self.make_graph(1000, species, max_changing_bonds=3)
+        t2 = time()
+        print("total time:", t2 - t1)
+        print("n trails:", ntrails)
+        print("time per add:", (t2 - t1) / ntrails)
 
+    def test_new_method(self):
+        g = RxnGraph()
+        g.new()
 
 if __name__ == '__main__':
     unittest.main()

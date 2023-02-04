@@ -1,7 +1,7 @@
 from abc import ABC, abstractclassmethod
 from typing import List
 import dask as da
-from ...core.RxnGraph.BaseRxnGraph import BaseRxnGraph
+from ...core.RxnGraph.RxnGraph import RxnGraph
 from ..filters.conversion_matrix_filters import ConvFilter
 from ..stop_conditions import StopCondition
 from ...core.Reaction import Reaction
@@ -16,7 +16,7 @@ class Iterator (ABC):
     ARGS:
         - rxn_graph (RxnGraph): reaction graph object with specie information"""
 
-    def __init__(self, rxn_graph: BaseRxnGraph):
+    def __init__(self, rxn_graph: RxnGraph):
         self.rxn_graph = rxn_graph
 
 
@@ -29,7 +29,7 @@ class Iterator (ABC):
         joint_ac = ac1.__class__(join_matrices(ac1.matrix, ac2.matrix))
         max_l = max(len(ac1), len(ac2))
         # make new graph for results
-        res_rxn_graph = self.rxn_graph.__class__(**self.rxn_graph.to_dict())
+        res_rxn_graph = self.rxn_graph.new(reactions=[], species=[])
         # adding original specie to the graph
         res_rxn_graph.add_specie(specie1)
         res_rxn_graph.add_specie(specie2)
@@ -45,7 +45,7 @@ class Iterator (ABC):
         """iterate over all possible reactions for 2 species"""
         # create joint ac matrix
         origin_ac = self.rxn_graph.ac_matrix_type.from_specie(specie)
-        res_rxn_graph = self.rxn_graph.__class__(**self.rxn_graph.to_dict())
+        res_rxn_graph = self.rxn_graph.new(reactions=[], species=[])
         # adding original specie to the graph
         res_rxn_graph.add_specie(specie)
         # apply all conversion matrices
@@ -55,7 +55,7 @@ class Iterator (ABC):
         return res_rxn_graph
 
 
-    def enumerate_reactions(self, conversion_filters: List[ConvFilter], ac_filters: List[callable], stopping_condition: StopCondition, verbose=1) -> BaseRxnGraph:
+    def enumerate_reactions(self, conversion_filters: List[ConvFilter], ac_filters: List[callable], stopping_condition: StopCondition, verbose=1) -> RxnGraph:
         """Method to enumerate over all elementary reactions available in reaction graph, until a stopping condition is met.
         ARGS:
             - conversion_filters (List[ConvFilter]): list of filters for conversion matrices
@@ -63,12 +63,12 @@ class Iterator (ABC):
         RETURNS:
             (RxnGraph) reaction graph with all enumerated reactions (based on self.rxn_graph)"""
         # init
-        old_species = self.rxn_graph.get_visited_species()
-        new_species = self.rxn_graph.get_unvisited_species()
+        old_species = list(self.rxn_graph.get_visited_species())
+        new_species = list(self.rxn_graph.get_unvisited_species())
         # iterate reactions of species
         counter = 1
         while True:
-            nseed = self.rxn_graph.__class__(**self.rxn_graph.to_dict())
+            nseed = self.rxn_graph.new(reactions=[], species=[])
             # add all unimolecular reactions
             if verbose > 0:
                 print("=" * 30)
@@ -81,9 +81,9 @@ class Iterator (ABC):
                 ajr.append(self.iterate_over_a_specie(s, ac_filters, conversion_filters))
             if verbose > 0:
                 with ProgressCallback():
-                    ajr = da.compute(ajr, scheduler="processes")[0]
+                    ajr = da.compute(ajr, scheduler="threads")[0]
             else:
-                ajr = da.compute(ajr, scheduler="processes")[0]
+                ajr = da.compute(ajr, scheduler="threads")[0]
             for ajr_rxn_graph in ajr:
                 nseed.join(ajr_rxn_graph)
             if verbose > 0:
@@ -99,9 +99,9 @@ class Iterator (ABC):
                     ajr.append(self.iterate_over_species(s1, s2, ac_filters, conversion_filters))
             if verbose > 0:
                 with ProgressCallback():
-                    ajr = da.compute(ajr, scheduler="processes")[0]
+                    ajr = da.compute(ajr, scheduler="threads")[0]
             else:
-                ajr = da.compute(ajr, scheduler="processes")[0]
+                ajr = da.compute(ajr, scheduler="threads")[0]
             for ajr_rxn_graph in ajr:
                 nseed.join(ajr_rxn_graph)
             if verbose > 0:
@@ -116,9 +116,9 @@ class Iterator (ABC):
                     ajr.append(self.iterate_over_species(new_species[i], new_species[j], ac_filters, conversion_filters))
             if verbose > 0:
                 with ProgressCallback():
-                    ajr = da.compute(ajr, scheduler="processes")[0]
+                    ajr = da.compute(ajr, scheduler="threads")[0]
             else:
-                ajr = da.compute(ajr, scheduler="processes")[0]
+                ajr = da.compute(ajr, scheduler="threads")[0]
             for ajr_rxn_graph in ajr:
                 nseed.join(ajr_rxn_graph)
             if verbose > 0:
@@ -131,8 +131,8 @@ class Iterator (ABC):
             for specie in new_species:
                 self.rxn_graph.make_specie_visited(specie)
             # updating species
-            old_species = self.rxn_graph.get_visited_species()
-            new_species = self.rxn_graph.get_unvisited_species()
+            old_species = list(self.rxn_graph.get_visited_species())
+            new_species = list(self.rxn_graph.get_unvisited_species())
             # check stop condition
             stop = stopping_condition.check(self.rxn_graph, counter)
             if verbose > 0:

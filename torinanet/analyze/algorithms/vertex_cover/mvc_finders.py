@@ -1,7 +1,7 @@
 import numpy as np
 from abc import ABC, abstractclassmethod
 from typing import List, Optional
-from ....core.RxnGraph.BaseRxnGraph import BaseRxnGraph
+from ....core.RxnGraph.RxnGraph import RxnGraph
 from ....core.Specie import Specie
 from ....core.Reaction import Reaction
 from .utils import total_degree, percolation_degree
@@ -10,7 +10,7 @@ from .utils import total_degree, percolation_degree
 class MvcFinder (ABC):
     
     @abstractclassmethod
-    def step(self, rxn_graph: BaseRxnGraph, uncovered_reactions: List[Reaction], mvc: List[Specie]) -> Specie:
+    def step(self, rxn_graph: RxnGraph, uncovered_reactions: List[Reaction], mvc: List[Specie]) -> Specie:
         """One step of MVC finder, returns the next specie to add to the MVC"""
         pass
 
@@ -23,7 +23,7 @@ class MvcFinder (ABC):
             _mvc = mvc
         return any([s.properties["visited"] or s in _mvc for s in rxn.products]) and all([s.properties["visited"] or s in _mvc for s in rxn.reactants])
             
-    def stop_condition(self, rxn_graph: BaseRxnGraph, uncovered_reactions: List[Reaction], mvc: List[Specie]) -> bool:
+    def stop_condition(self, rxn_graph: RxnGraph, uncovered_reactions: List[Reaction], mvc: List[Specie]) -> bool:
         """Custom stop condition to exit the algorithm. Applied after the check that all reactions are covered. If the condition is met, the returned MVC is None"""
         return False
 
@@ -31,12 +31,12 @@ class MvcFinder (ABC):
         """Method to call for cleanup after MVC search for reusablility of the object"""
         pass
 
-    def find_mvc(self, rxn_graph: BaseRxnGraph, verbose: int=1) -> List[str]:
+    def find_mvc(self, rxn_graph: RxnGraph, verbose: int=1) -> List[str]:
         """Method to find a minimal vertex cover for a reaction network"""
         mvc = []
         uncovered_reactions = [rxn for rxn in rxn_graph.reactions if not self.is_covered(rxn)]
         if verbose:
-            n_reactions = len(rxn_graph.reactions)
+            n_reactions = len(list(rxn_graph.reactions))
             n_uncovered = len(uncovered_reactions)
             print("Finding MVC for network, starting with {} covered out of {} ({:.2f}%)".format(n_reactions - n_uncovered, n_reactions, (n_reactions - n_uncovered) / n_reactions * 100))
         while True:
@@ -77,13 +77,13 @@ class StochasticMvcFinder (MvcFinder):
     def cleanup(self):
         self.sample_counter = 0
 
-    def stop_condition(self, rxn_graph: BaseRxnGraph, uncovered_reactions: List[Reaction], mvc: List[Specie]) -> bool:
+    def stop_condition(self, rxn_graph: RxnGraph, uncovered_reactions: List[Reaction], mvc: List[Specie]) -> bool:
         if self.sample_counter >= self.max_samples:
             return True
         else:
             return False
 
-    def step(self, rxn_graph: BaseRxnGraph, uncovered_reactions: List[Reaction], mvc: List[Specie]) -> Specie:
+    def step(self, rxn_graph: RxnGraph, uncovered_reactions: List[Reaction], mvc: List[Specie]) -> Specie:
         while True:
             self.sample_counter += 1
             rxn = np.random.choice(uncovered_reactions)
@@ -114,7 +114,7 @@ class GreedyMvcFinder (MvcFinder):
         self.metric = self.metric_dict[greedy_metric]
 
 
-    def step(self, rxn_graph: BaseRxnGraph, uncovered_reactions: List[Reaction], mvc: List[Specie]) -> Specie:
+    def step(self, rxn_graph: RxnGraph, uncovered_reactions: List[Reaction], mvc: List[Specie]) -> Specie:
         max_metric = 0
         specie = None
         G = rxn_graph.to_networkx_graph(use_internal_id=True)

@@ -5,6 +5,8 @@ import openbabel as ob
 import networkx as nx
 import numpy as np
 from typing import Optional
+from rdkit.Chem import rdchem
+from rdkit.Chem import rdmolops
 
 class BinaryAcMatrix (AcMatrix):
     """Binary AC matrix object"""
@@ -90,6 +92,23 @@ class BinaryAcMatrix (AcMatrix):
                     mol.AddBond(i + 1, j + 1, 1)
         return mol
 
+    def to_rdmol(self) -> rdchem.Mol:
+        # converting to obmol to get bond orders
+        obmol = self.to_obmol()
+        # converting obmol to rdmol
+        rdmol = rdchem.RWMol(rdchem.Mol())
+        for atom in ob.OBMolAtomIter(obmol):
+            rdmol.AddAtom(rdchem.Atom(atom.GetAtomicNum()))
+        for bond in ob.OBMolBondIter(obmol):
+            bond = (bond.GetBeginAtomIdx() - 1, bond.GetEndAtomIdx() - 1, bond.GetBondOrder())
+            rdmol.AddBond(bond[0], bond[1], rdchem.BondType.values[bond[2]])
+        # returning the molecule
+        rdmol = rdmol.GetMol()
+        # calculating important properties for using the generated RDMol
+        rdmol.UpdatePropertyCache(strict=False)
+        rdmolops.GetSSSR(rdmol)
+        return rdmol
+
     def to_specie(self) -> Specie:
         mol = self.to_obmol()
         # perceiving "correct" bond orders
@@ -133,3 +152,12 @@ class BinaryAcMatrix (AcMatrix):
         # optimizing geometry
         molecule = mm_geometry_optimization(molecule, force_field, n_steps)
         return molecule
+
+    def __eq__(self, x):
+        if not type(x) is BinaryAcMatrix:
+            raise TypeError("Cannot compare BinaryAcMatrix with {}".format(type(x)))
+        # if the ac matrix is of a single atom, compare the atoms (graph isomorphism with networkx fail on these things)
+        # if len(self.get_atoms()) == 1 and len(x.get_atoms()) == 1:
+        #     return self.get_atom(0) == x.get_atom(0)
+        # comparing molecular graphs
+        return nx.is_isomorphic(self.to_networkx_graph(), x.to_networkx_graph(), node_match=lambda x, y: x["Z"] == y["Z"])

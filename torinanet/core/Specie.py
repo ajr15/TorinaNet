@@ -1,5 +1,6 @@
 import numpy as np
 import openbabel as ob
+from rdkit import Chem
 
 class Specie:
     """Core object to hold information and methods on a single specie"""
@@ -36,7 +37,6 @@ class Specie:
     def _get_id_str(self):
         return self.ac_matrix.get_uid()
 
-
     def _get_charged_id_str(self):
         s = self._get_id_str()
         try:
@@ -46,12 +46,23 @@ class Specie:
         except TypeError:
             charge = "None"
         return s + "#{}".format(charge)
-        
 
     def has_charge(self):
         """Method to check if a specie has a defined charge"""
         return self.charge is not None
 
+    def to_rdmol(self):
+        """convert specie to an RDKit molecule"""
+        if self.ac_matrix is not None:
+            return self.ac_matrix.to_rdmol()
+        elif self.identifier is not None:
+            return Chem.MolFromSmiles(self.identifier)
+        else:
+            return None
+
     def __eq__(self, x):
-        # check if hash strings are the same
-        return self._get_charged_id_str() == x._get_charged_id_str()
+        if not type(x) is Specie:
+            raise TypeError("Cannot compare Specie to {}".format(type(x)))
+        # condition = ac matrices are equal and properties are equal
+        return self.ac_matrix == x.ac_matrix and self.charge == x.charge
+        

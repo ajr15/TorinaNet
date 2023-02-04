@@ -5,18 +5,9 @@ import numpy as np
 
 class AcMatrix (ABC):
 
-    wl_hash_iterations = 5
-
     def __init__(self, matrix=None):
         self.matrix = matrix
         self.uid = None
-
-
-    def get_uid(self) -> str:
-        if self.uid is None:
-            self.uid = self.hash_key()
-        return self.uid
-
 
     @abstractclassmethod
     def get_atom(self, i):
@@ -56,6 +47,10 @@ class AcMatrix (ABC):
         """Abastract method to convert an AC matrix to a Specie"""
         raise NotImplementedError
 
+    @abstractclassmethod
+    def __eq__(self, x):
+        pass
+
     def get_compoenents(self):
         """Method to decompose an AC matrix to its components"""
         G = self.to_networkx_graph()
@@ -87,10 +82,6 @@ class AcMatrix (ABC):
                 if len(string_matrix[i][j]) > 0:
                     matrix[i, j] = float(string_matrix[i][j])
         self.__init__(matrix)
-
-    def hash_key(self):
-        graph = self.to_networkx_graph()
-        return nx.weisfeiler_lehman_graph_hash(graph, iterations=self.wl_hash_iterations)
 
     def __len__(self):
         return len(self.matrix)
