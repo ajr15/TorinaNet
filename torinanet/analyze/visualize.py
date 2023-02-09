@@ -1,5 +1,4 @@
-from networkx.algorithms import sparsifiers
-from ..core.RxnGraph._RxnGraph import RxnGraph
+from ..core.RxnGraph import RxnGraph
 import matplotlib.pyplot as plt
 import multiprocessing
 import networkx as nx

@@ -1,7 +1,7 @@
 import numpy as np
-from ...core.RxnGraph import BaseRxnGraph
+from ...core.RxnGraph import RxnGraph
 
-def assign_maximal_rate_constants(rxn_graph: BaseRxnGraph, temperature: float, energy_conversion_factor: float=4.359744e-18, specie_energy_property_name: str="energy", rate_constant_property_name: str="k") -> BaseRxnGraph:
+def assign_maximal_rate_constants(rxn_graph: RxnGraph, temperature: float, energy_conversion_factor: float=4.359744e-18, specie_energy_property_name: str="energy", rate_constant_property_name: str="k") -> RxnGraph:
     """Method to assign the largest possible rate constant to a reaction (minimal activation energy), based on the eyring-polanyi equation"""
     kb = 1.3806e-23
     h = 6.62607e-34

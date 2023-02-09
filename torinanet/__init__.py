@@ -1,2 +1,2 @@
-from . import core, iterate
+from . import core, iterate, analyze
 # , utils, iterate, analyze, io

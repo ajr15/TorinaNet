@@ -4,7 +4,6 @@ from sqlalchemy.orm import sessionmaker
 import importlib
 import os
 from typing import List, Optional
-from dask.distributed import Client
 import torinanet as tn
 import torinax as tx
 from torinax.pipelines.computations import SqlBase, run_computations, model_lookup_by_table_name
@@ -56,46 +55,26 @@ class Enumerator:
         # properly define results dir
         if not os.path.isdir(self.results_dir):
             os.makedirs(self.results_dir)
-        # properly saves reaction graph
-        if self.rxn_graph.use_charge:
-            # saving charged graph
-            rxn_graph_path = os.path.join(self.results_dir, "charged.rxn")
-            self.rxn_graph.save(rxn_graph_path)
-            # uncharging and saving uncharged graph
-            uncharged_rxn_graph = self.rxn_graph.__class__(use_charge=False)
-            for r in self.rxn_graph.reactions:
-                uncharged_rxn_graph.add_reaction(r)
-            uncharged_rxn_graph.set_source_species(self.rxn_graph.source_species)                
-            rxn_graph_path = os.path.join(self.results_dir, "uncharged.rxn")
-            uncharged_rxn_graph.save(rxn_graph_path)
-        else:
-            rxn_graph_path = os.path.join(self.results_dir, "uncharged.rxn")
-            self.rxn_graph.save(rxn_graph_path)
+        # properly save reaction graph
+        rxn_graph_path = os.path.join(self.results_dir, "rxn_graph.rxn")
+        self.rxn_graph.save(rxn_graph_path)
         # loading config settings
         self._load_setting("results_dir", self.results_dir, overwrite=True)
-        self._load_setting("uncharged_rxn_graph_path", rxn_graph_path, overwrite)
-        self._load_setting("charged_rxn_graph_path", os.path.join(self.results_dir, "charged.rxn"), overwrite)
+        self._load_setting("rxn_graph_path", rxn_graph_path, overwrite)
         self._load_setting("macro_iteration", "0", overwrite)
-        # resetting dynamic tables
-        for comp in self.pipeline:
-            # delete the "relevance" recods for external computations - these are set on each run independently
-            if isinstance(comp, comps.ExternalCalculation):
-                self.session.query(comp.relevance_model).delete()
-                # adding reactant relevance entries (always reactants are relevant)
-                entries = []
-                for s in self.rxn_graph.source_species:
-                    entries.append(comp.relevance_model(id=s._get_charged_id_str(), iteration=0))
-                self.session.add_all(entries)
+        # resetting log tables - these are re-made every calculation
+        log_table = model_lookup_by_table_name("log")
+        self.session.query(log_table).delete()
+        # adding reactant relevance entries (always reactants are relevant)
+        entries = []
+        for s in self.rxn_graph.source_species:
+            entries.append(log_table(id=s.identifier, iteration=0, source="reactant"))
+        self.session.add_all(entries)
         self.session.commit()
 
-    def load_uncharged_graph(self) -> tn.core.RxnGraph:
+    def load_rxn_graph(self) -> tn.core.RxnGraph:
         """Method to load the most recent uncharged reaction graph from database"""
-        rxn_graph_path = self.session.query(ConfigValue.value).filter_by(name="uncharged_rxn_graph_path").one()[0]
-        return tn.core.RxnGraph.from_file(rxn_graph_path)
-
-    def load_charged_graph(self) -> tn.core.RxnGraph:
-        """Method to load the most recent charged reaction graph from database"""
-        rxn_graph_path = self.session.query(ConfigValue.value).filter_by(name="charged_rxn_graph_path").one()[0]
+        rxn_graph_path = self.session.query(ConfigValue.value).filter_by(name="rxn_graph_path").one()[0]
         return tn.core.RxnGraph.from_file(rxn_graph_path)
 
     def pre_enumerate(self):
@@ -124,16 +103,11 @@ class SimpleEnumerator (Enumerator):
     def __init__(self, rxn_graph: tn.core.RxnGraph,
                     n_iter: int,
                     results_dir: str,
-                    dask_client: Client,
                     slurm_client: SlurmClient,
                     max_changing_bonds: int=2,
                     ac_filters: Optional[List[tn.iterate.ac_matrix_filters.AcMatrixFilter]]=None,
-                    max_reduction: int=0,
-                    max_oxidation: int=0,
-                    max_abs_charge: int=1,
                     slurm_config_path: Optional[str]=None,
                     program=None,
-                    connected_molecules=None,
                     comp_kwdict: Optional[dict]=None,
                     input_type: Optional[tx.io.FileParser]=None,
                     output_type: Optional[tx.io.FileParser]=None,
@@ -149,39 +123,32 @@ class SimpleEnumerator (Enumerator):
         # parsing input kwargs
         self.parse_inputs(max_changing_bonds,
                         ac_filters,
-                        max_abs_charge,
                         slurm_config_path,
                         program,
                         comp_kwdict,
                         input_type,
                         output_type)
-        self.max_abs_charge = max_abs_charge
         self.slurm_client = slurm_client
-        self.dask_client = dask_client
-        self.connected_molecules = connected_molecules
-        # making build computation & build filter
-        build_comp = comps.BuildMolecules(dask_client, connected_molecules)
-        build_filter = lambda db_session: db_session.query(build_comp.sql_model.id).filter_by(successful=False)
         # making final computation pipeline
         pipeline = [
             # enumerate elementary reactions & update new specie data in DB
             comps.ElementaryReactionEnumeration(self.conversion_filters, self.ac_filters),
             # estimate initial geometries for species
-            build_comp,
+            comps.BuildMolecules(),
             # filter molecules without build
-            comps.ReduceGraphByCriterion("uncharged", build_filter),
-            # enumerate redox reactions & update charge information on species in DB
-            comps.RedoxReactionEnumeration(max_reduction, max_oxidation, self.charge_filters)]
+            comps.ReduceGraphByCriterion(self.filter_bad_build_species)]
         if use_mvc:
             # finding minimal vertex cover
             pipeline += [comps.FindMvc(n_trails=n_mvc_trails, max_samples=max_mvc_samples, metric=mvc_metric),
                             # calculate energies for MVC species
                             comps.ExternalCalculation(slurm_client, self.program, self.input_type,
                                                     self.comp_kwdict, self.output_type.extension,
-                                                    specie_tablename="mvc_species",
-                                                    name="energy_comp"),
+                                                    comp_source="mvc"),
                             # read computation results for MVC species
-                            comps.ReadCompOutput(dask_client, self.output_type, comp_output_table_name="energy_comp")]
+                            comps.ReadCompOutput(self.output_type),
+                            # filter species with bad geometry
+                            comps.ReduceGraphByCriterion(self.filter_bad_geometry_species)
+                            ]
         if use_mvc or min_electron_energy:
             # energy based reduction with MVC species data
             pipeline += [comps.ReduceGraphByEnergyReducer(
@@ -189,24 +156,33 @@ class SimpleEnumerator (Enumerator):
                                                                                             min_electron_energy,
                                                                                             use_shortest_path,
                                                                                             sp_energy_th),
-                            "charged",
-                            "mvc_energy_reduced_graph.rxn",
-                            energy_comp_table_name="energy_comp")]
+                            "mvc_energy_reduced_graph.rxn")]
         # now, calculating energies for every specie in graph
-        pipeline += [comps.ExternalCalculation(slurm_client, self.program, self.input_type, self.comp_kwdict, self.output_type.extension, name="energy_comp"),
+        pipeline += [comps.ExternalCalculation(slurm_client, self.program, self.input_type, self.comp_kwdict, self.output_type.extension),
             # read computation results
-            comps.ReadCompOutput(dask_client, self.output_type, comp_output_table_name="energy_comp"),
+            comps.ReadCompOutput(self.output_type),
+            # filter out species with bad geometries
+            comps.ReduceGraphByCriterion(self.filter_bad_geometry_species),
             # energy based reduction for all species
             comps.ReduceGraphByEnergyReducer(
                 tn.analyze.network_reduction.EnergyReduction.SimpleEnergyReduction(reaction_energy_th,
                                                                                 use_shortest_path,
                                                                                 sp_energy_th),
-                "charged",
-                "energy_reduced_graph.rxn",
-                energy_comp_table_name="energy_comp")]
-        # uncharging charged graph
-        pipeline += [comps.UnchargeGraph()]
+                "energy_reduced_graph.rxn")]
         super().__init__(rxn_graph, pipeline, n_iter, results_dir, reflect)
+
+    @staticmethod
+    def filter_bad_geometry_species(db_session):
+        log_table = model_lookup_by_table_name("log")
+        specie_table = model_lookup_by_table_name("species")
+        relevant_smiles = db_session.query(log_table.id)
+        return db_session.query(specie_table).filter(
+                        ~(specie_table.good_geometry & specie_table.comp_successful) & specie_table.smiles.in_(relevant_smiles)).all()
+
+    @staticmethod
+    def filter_bad_build_species(db_session):
+        specie_table = model_lookup_by_table_name("species")
+        return db_session.query(specie_table).filter(specie_table.xyz == None)
 
     def pre_enumerate(self):
         """Pre-enumeration calculation for calculating source specie's energies and basic sizes for
@@ -214,49 +190,40 @@ class SimpleEnumerator (Enumerator):
         res_dir = os.path.join(self.results_dir, str(0))
         if not os.path.isdir(res_dir):
             os.mkdir(res_dir)
+        # making preparations for MVC-based computations, they require reactant specie calculation prior to the run
         # add reactant molecules & atoms to specie's table
-        specie_model = model_lookup_by_table_name("uncharged_species")
-        charge_model = model_lookup_by_table_name("charged_species")
+        specie_table = model_lookup_by_table_name("uncharged_species")
         # making all species irrelevant for comuputation
-        self.session.query(charge_model).update({"relevant": False})
+        self.session.query(specie_table).update({"relevant": False})
         entries = []
         for s in self.rxn_graph.source_species:
-            # adding reactants
-            sid = self.rxn_graph.make_unique_id(s)
-            if self.session.query(specie_model).filter_by(id=sid).count() == 0:
-              s_entry = specie_model(id=sid, ac_matrix_str=s.ac_matrix._to_str(), smiles=s.ac_matrix.to_specie().identifier)
+            # adding reactants 
+            if self.session.query(specie_table).filter_by(smiles=s.identifier).count() == 0:
+              s_entry = specie_table(hash_key=comps.ReadSpeciesFromGraph.specie_hash_func(s), smiles=s.identifier, charge=0, relevant=True)
               entries.append(s_entry)
-            if self.session.query(charge_model).filter_by(id=s._get_charged_id_str()).count() == 0:
-              c_entry = charge_model(id=s._get_charged_id_str(), charge=s.charge, uncharged_sid=sid)
-              entries.append(c_entry)
             else:
-              # if specie entry exists, make it relevant
-              self.session.query(charge_model).filter_by(id=s._get_charged_id_str()).update({"relevant": True})
+                # if reactant is in table specie, make it relevant for computation
+                self.session.query(specie_table).filter_by(smiles=s.identifier).update({"relevant": True})
         self.session.add_all(entries)
         self.session.commit() 
         # building molecules, calculating energies, reading results
         pipeline = [
             # estimate initial geometries for species
-            comps.BuildMolecules(self.dask_client,
-                                 self.connected_molecules),
+            comps.BuildMolecules(),
             # calculate energies for MVC species
             comps.ExternalCalculation(self.slurm_client,
                                       self.program,
                                       self.input_type,
                                       self.comp_kwdict,
-                                      self.output_type.extension,
-                                      name="energy_comp"),
+                                      comp_source="reactant"),
             # read computation results for MVC species
-            comps.ReadCompOutput(self.dask_client, self.output_type, comp_output_table_name="energy_comp"),
+            comps.ReadCompOutput(self.output_type),
         ]
         run_computations(pipeline, db_session=self.session)
-
-
 
     def parse_inputs(self,
                         max_changing_bonds: int=2,
                         ac_filters: Optional[List[tn.iterate.ac_matrix_filters.AcMatrixFilter]]=None,
-                        max_abs_charge: int=1,
                         slurm_config_path: Optional[str]=None,
                         program=None,
                         comp_kwdict: Optional[dict]=None,
@@ -274,8 +241,6 @@ class SimpleEnumerator (Enumerator):
             ]
         else:
             self.ac_filters = ac_filters
-        # making charge filters
-        self.charge_filters = [tn.iterate.charge_filters.MaxAbsCharge(max_abs_charge)]
         # parsing external computation kwargs - defaults to ORCA basic energy computation
         if not program:
             if not slurm_config_path:

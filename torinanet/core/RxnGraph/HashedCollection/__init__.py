@@ -1,2 +1,2 @@
 from .HashedCollection import HashedCollection
-from .CuckooHashedCollection import CuckooSpecieCollection, CuckooReactionCollection, IndepCuckooReactionCollection, CuckooHashedCollection
+from .CuckooHashedCollection import CuckooSpecieCollection, CuckooReactionCollection, IndepCuckooReactionCollection, CuckooHashedCollection, FingerprintGenerators

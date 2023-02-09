@@ -1,7 +1,7 @@
 import numpy as np
 from abc import ABC, abstractclassmethod
 from typing import List, Optional
-from ....core.RxnGraph.RxnGraph import RxnGraph
+from ....core.RxnGraph import RxnGraph
 from ....core.Specie import Specie
 from ....core.Reaction import Reaction
 from .utils import total_degree, percolation_degree
@@ -46,7 +46,7 @@ class MvcFinder (ABC):
             uncovered_reactions = [rxn for rxn in uncovered_reactions if not self.is_covered(rxn, mvc)]
             # adding verbosity
             if verbose:
-                n_reactions = len(rxn_graph.reactions)
+                n_reactions = len(list(rxn_graph.reactions))
                 n_uncovered = len(uncovered_reactions)
                 print("Finding MVC for network, starting with {} covered out of {} ({:.2f}%)".format(n_reactions - n_uncovered, n_reactions, (n_reactions - n_uncovered) / n_reactions * 100))
             # checks if there are still uncovered reactions

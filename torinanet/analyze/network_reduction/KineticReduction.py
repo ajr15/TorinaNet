@@ -2,7 +2,7 @@ from typing import Dict, Optional
 
 import numpy as np
 from ...core.Specie import Specie
-from ...core.RxnGraph import BaseRxnGraph
+from ...core.RxnGraph import RxnGraph
 from ..kinetics.KineticAnalyzer import KineticAnalyzer
 from ..kinetics.utils import assign_maximal_rate_constants
 
@@ -33,7 +33,7 @@ class SimpleKineticsReduction:
         self.rate_constant_property_name = rate_constant_property
         
     
-    def apply(self, rxn_graph: BaseRxnGraph):
+    def apply(self, rxn_graph: RxnGraph):
         # if required, estimate maximal rate constants
         if self.estimate_max_constants:
             rxn_graph = assign_maximal_rate_constants(rxn_graph, self.temperature, self.energy_conversion_factor, self.specie_energy_property_name, self.rate_constant_property)

@@ -5,14 +5,14 @@
 import numpy as np
 from scipy.integrate import ode
 from typing import List, Optional
-from ...core.RxnGraph import BaseRxnGraph
+from ...core.RxnGraph import RxnGraph
 from ...core import Reaction, Specie
 
 class KineticAnalyzer:
 
     """General kinetic analyzer for reaction graphs"""
 
-    def __init__(self, rxn_graph: BaseRxnGraph, rate_constant_property: str="k"):
+    def __init__(self, rxn_graph: RxnGraph, rate_constant_property: str="k"):
         self.rxn_graph = rxn_graph
         self.rate_constant_property = rate_constant_property
         # initializing specie dictionary
@@ -57,7 +57,7 @@ class KineticAnalyzer:
             raise RuntimeError("No simulation was ran! before reading concentrations you must call the solve_kinetics method at least once")
 
     @staticmethod
-    def _build_specie_idx_dict(rxn_graph: BaseRxnGraph) -> dict:
+    def _build_specie_idx_dict(rxn_graph: RxnGraph) -> dict:
         """Get dictionary of specie ID -> index in vector. used internally for solver"""
         d = {}
         for i, s in enumerate(rxn_graph.species):

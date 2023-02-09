@@ -116,7 +116,7 @@ class RxnGraph:
             - specie (TorinaNet.Specie): specie to check
         RETURNS:
             (bool) wheather specie is in graph"""
-        return self.specie_collection.has(specie)
+        return self.specie_collection.has(self._read_specie_with_ac_matrix(specie))
 
     def has_reaction(self, reaction: Reaction) -> bool:
         """Method to check if reaction graph has a reaction.
@@ -268,11 +268,13 @@ class RxnGraph:
             - specie (Specie): desired specie to remove
         RETURNS:
             (RxnGraph) a copy of the reaction graph without the speice"""
+        # putting specie in format
+        s = self._read_specie_with_ac_matrix(specie)
         # check if specie is in graph
-        if not self.has_specie(specie):
+        if not self.has_specie(s):
             raise ValueError("Desired specie is not in the graph !")
         # removing specie & all of its reactions (neighbors)
-        return self._remove_object(specie, remove_neighbors=True)
+        return self._remove_object(s, remove_neighbors=True)
 
     def remove_reaction(self, reaction: Reaction):
         """Method to remove a reaction from the reaction graph.
@@ -432,5 +434,5 @@ class RxnGraph:
     def __eq__(self, x):
         if not isinstance(x, RxnGraph):
             raise ValueError("Can compare only 2 reaction graphs")
-        return len(self.reaction_collection.substract(x.reaction_collection)) == 0 and \
-                len(x.reaction_collection.substract(self.reaction_collection)) == 0
+        return len(list(self.reaction_collection.substract(x.reaction_collection))) == 0 and \
+                len(list(x.reaction_collection.substract(self.reaction_collection))) == 0
