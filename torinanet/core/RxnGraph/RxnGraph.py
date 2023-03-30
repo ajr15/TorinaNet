@@ -11,6 +11,7 @@ from ..AcMatrix.AcMatrix import AcMatrix
 from ..AcMatrix.BinaryAcMatrix import BinaryAcMatrix
 from .HashedCollection.HashedCollection import HashedCollection
 from .HashedCollection.CuckooHashedCollection import CuckooSpecieCollection, IndepCuckooReactionCollection
+from ...utils.TimeFunc import TimeFunc
 
 class RxnGraph:
 
@@ -26,6 +27,7 @@ class RxnGraph:
                     specie_collection_kwargs: Optional[dict]=None, reaction_collection_kwargs: Optional[dict]=None) -> None:
         self.ac_matrix_type = ac_matrix_type
         self.source_species = None
+        self._has_charge = None
         # parsing collection arguments
         if not issubclass(specie_collection, HashedCollection):
             raise ValueError("Specie collection type must be HashedCollection")
@@ -66,12 +68,19 @@ class RxnGraph:
     def species(self):
         return self.specie_collection.objects()
 
+    @TimeFunc
     def add_specie(self, specie: Specie) -> Specie:
         """Method to add a specie to reaction graph.
         ARGS:
             - specie (Specie): Specie object
         RETURNS:
             added specie from reaction graph"""
+        if self._has_charge is None:
+            self._has_charge = specie.charge is not None
+        elif self._has_charge is True and specie.charge is None:
+            raise RuntimeError("Cannot add specie without charge information to graph with species with charge information")
+        elif self._has_charge is False and specie.charge is not None:
+            raise RuntimeError("Cannot add specie with charge information to graph with species without charge information")
         s = self._read_specie_with_ac_matrix(specie)
         # check if specie is in graph
         if not self.specie_collection.has(s):
@@ -83,6 +92,7 @@ class RxnGraph:
         # return specie
         return self.specie_collection.get(s)
 
+    @TimeFunc
     def add_reaction(self, reaction: Reaction) -> None:
         """Method to add a reaction to reaction graph.
         ARGS:
@@ -100,6 +110,7 @@ class RxnGraph:
             # adds reaction with graph species
             self.reaction_collection.add(ajr)
 
+    @TimeFunc
     def compare_species(self, rxn_graph) -> List[Specie]:
         """Method to get the different species between two reaction graphs
         ARGS:
@@ -110,6 +121,7 @@ class RxnGraph:
             raise TypeError("compare_species is defined only between RxnGraph objects")
         return list(self.specie_collection.substract(rxn_graph.specie_collection))
 
+    @TimeFunc
     def has_specie(self, specie: Specie) -> bool:
         """Method to check if reaction graph has a specie.
         ARGS:
@@ -118,6 +130,7 @@ class RxnGraph:
             (bool) wheather specie is in graph"""
         return self.specie_collection.has(self._read_specie_with_ac_matrix(specie))
 
+    @TimeFunc
     def has_reaction(self, reaction: Reaction) -> bool:
         """Method to check if reaction graph has a reaction.
         ARGS:
@@ -146,6 +159,7 @@ class RxnGraph:
             s = Specie.from_ac_matrix(self.ac_matrix_type.from_specie(specie))
             s.properties.update(specie.properties)
             s.charge = specie.charge
+            s.identifier = specie.identifier
             return s
         else:
             return specie
@@ -209,9 +223,9 @@ class RxnGraph:
         for source in sources:
             if self.specie_collection.get_key(source) in network:
                 for node in nx.algorithms.dfs_tree(network, self.specie_collection.get_key(source)).nodes:
-                    if type(node["obj"]) is Reaction:
-                        yield node
-
+                    if type(network.nodes[node]["obj"]) is Reaction:
+                        yield network.nodes[node]["obj"]
+    @TimeFunc
     def new(self, reactions: Optional[Iterable[Reaction]]=None, species: Optional[Iterable[Specie]]=None):
         """Method to make a new reaction graph with same definitions as the current one. if no reactions / species are specified, returns a copy
         ARGS:
@@ -322,7 +336,7 @@ class RxnGraph:
                     ",".join([find_sp_idx(sp) for sp in r.products])
             d["r_str"] = st
             res = res.append(d, ignore_index=True)
-        if len(self.reactions) > 0:
+        if len(list(self.reactions)) > 0:
             res = res.set_index("r_str")
         return res
 
@@ -338,9 +352,12 @@ class RxnGraph:
         rxn_df = self._make_reactions_df(specie_df)
         rxn_df.to_csv(path_basename + "_reactions")
         # saving source specie unique IDs in a temp file
-        with open(path_basename + "_params", "w") as f:
+        with open(path_basename + "_params", "wb") as f:
             d = {"params": self.to_dict()}
-            d["source_species_idxs"] = [int(specie_df.loc[self.specie_collection.get_key(sp), "idx"]) for sp in self.source_species]
+            if self.source_species is not None:
+                d["source_species_idxs"] = [int(specie_df.loc[self.specie_collection.get_key(sp), "idx"]) for sp in self.source_species]
+            else:
+                d["source_species_idxs"] = []
             d["class"] = self.__class__
             pickle.dump(d, f)
         # saving reaction graph as archive file
@@ -377,10 +394,10 @@ class RxnGraph:
                 specie_mat._from_str(specie_row["ac_mat_str"])
                 specie = specie_mat.to_specie()
                 # reading charge
-                specie.charge = specie_row["charge"]
+                specie.charge = None if pd.isna(specie_row["charge"]) else specie_row["charge"]
                 # adding properties
                 for c in specie_row.keys():
-                    if not c in ["idx", "ac_mat_str", "charge", "sid"]:
+                    if not c in ["idx", "ac_mat_str", "charge", "sid"] and not pd.isna(specie_row[c]):
                         specie.properties[c] = specie_row[c]
                 # adding specie to graph
                 rxn_graph.add_specie(specie)

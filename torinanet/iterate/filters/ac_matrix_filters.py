@@ -59,10 +59,26 @@ class MaxAtomsOfElement (AcMatrixFilter):
     def __init__(self, max_atoms_of_element_dict: dict) -> None:
         self.max_atoms_of_element_dict = max_atoms_of_element_dict
 
-    def check(self, ac_matrix):
+    def check_mat(self, ac_matrix) -> bool:
         counter = {k: 0 for k in self.max_atoms_of_element_dict.keys()}
         for i in range(len(ac_matrix)):
             atom = ac_matrix.get_atom(i)
             if atom in counter:
                 counter[atom] += 1
         return all([counter[k] <= self.max_atoms_of_element_dict[k] for k in self.max_atoms_of_element_dict.keys()])
+
+    def check(self, ac_matrix) -> bool:
+        for ac in ac_matrix.get_compoenents():
+            if not self.check_mat(ac_matrix):
+                return False
+        return True
+
+class MaxComponents (AcMatrixFilter):
+
+    """Filter that prevents AC matrices with more than N components to be admitted. this puts a limit on the number of products in a reaction"""
+
+    def __init__(self, n: int) -> None:
+        self.n = n
+
+    def check(self, ac_matrix) -> bool:
+        return len(ac_matrix.get_compoenents()) <= self.n

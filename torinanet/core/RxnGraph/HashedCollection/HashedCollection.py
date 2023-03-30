@@ -78,3 +78,6 @@ class HashedCollection:
             raise ValueError("Can substract only two HashedCollection instances")
         return all([collection.has(obj) for obj in self.objects()])
 
+    def __len__(self) -> int:
+        """Returns the number of items in the collection (using the built-in len function)"""
+        return len(list(self.items()))

@@ -1,6 +1,7 @@
 import numpy as np
 from typing import List, Optional
 from .Specie import Specie
+from ..utils.TimeFunc import TimeFunc
 
 class Reaction:
     """Core object to hold information and methods on a single reaction.
@@ -22,7 +23,7 @@ class Reaction:
             self.properties = {}
         else:
             self.properties = properties
-        self._to_convension()
+        # self._to_convension()
 
     def _to_convension(self):
         """Method to transform the reaction to a conventional one (makes _id_properties and sorts reactants/products)"""
@@ -36,6 +37,7 @@ class Reaction:
         }
 
     @staticmethod
+    @TimeFunc
     def from_ac_matrices(reactants, products):
         ajr = Reaction(None, None, {}) # must instanciate with explicit values (unclear why, probably some memory managment bug)
         # first reading products from joint ac matrix

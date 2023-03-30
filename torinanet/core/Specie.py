@@ -27,9 +27,9 @@ class Specie:
     def from_ac_matrix(ac):
         """Method to read a Specie from an AC matrix"""
         s = Specie(None, {})
-        # calculates important (and quick) properties of matrix
-        s._id_properties['determinant'] = round(np.linalg.det(ac.matrix))
-        s._id_properties['number_of_atoms'] = len(ac.matrix)
+        # # calculates important (and quick) properties of matrix
+        # s._id_properties['determinant'] = round(np.linalg.det(ac.matrix))
+        # s._id_properties['number_of_atoms'] = len(ac.matrix)
         # saves matrix as an attribute
         s.ac_matrix = ac
         return s
@@ -64,5 +64,5 @@ class Specie:
         if not type(x) is Specie:
             raise TypeError("Cannot compare Specie to {}".format(type(x)))
         # condition = ac matrices are equal and properties are equal
+        # need to account for None charge as comparison to it is problematic
         return self.ac_matrix == x.ac_matrix and self.charge == x.charge
-        

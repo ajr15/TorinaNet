@@ -23,7 +23,7 @@ class CuckooHashedCollection (HashedCollection):
         self.max_trails = max_trails
         # building a picklable hash func generator - a list with max rehashes number of functions
         self.hash_func_generator = []
-        for _ in range(max_rehashes + 1):
+        for _ in range(max_rehashes + 2):
             self.hash_func_generator.append(next(hash_func_generator))
         self._current_func_idx = 0
         self._hash_func1, self._hash_func2 = self.hash_func_generator[self._current_func_idx]

@@ -11,12 +11,19 @@ from rdkit.Chem import rdmolops
 class BinaryAcMatrix (AcMatrix):
     """Binary AC matrix object"""
 
+    def __init__(self, matrix=None):
+        # fixing bad input types (non-int) in matrix
+        # mainly to properly support the "from string" method in the AcMatrix
+        if matrix is not None:
+            super().__init__(np.int32(matrix))
+        else:
+            super().__init__(matrix)
 
     def get_atom(self, i: int):
         # the diagonal of the ac matrix is the list of atomic number
         if i > len(self.matrix):
             raise ValueError("too high index {}, number of atoms {}".format(i, len(self.matrix)))
-        return self.matrix[i][i]
+        return int(self.matrix[i][i])
 
     def get_neighbors(self, i):
         ns = []
@@ -157,7 +164,7 @@ class BinaryAcMatrix (AcMatrix):
         if not type(x) is BinaryAcMatrix:
             raise TypeError("Cannot compare BinaryAcMatrix with {}".format(type(x)))
         # if the ac matrix is of a single atom, compare the atoms (graph isomorphism with networkx fail on these things)
-        # if len(self.get_atoms()) == 1 and len(x.get_atoms()) == 1:
-        #     return self.get_atom(0) == x.get_atom(0)
+        if len(self.get_atoms()) == 1 and len(x.get_atoms()) == 1:
+            return self.get_atom(0) == x.get_atom(0)
         # comparing molecular graphs
         return nx.is_isomorphic(self.to_networkx_graph(), x.to_networkx_graph(), node_match=lambda x, y: x["Z"] == y["Z"])

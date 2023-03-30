@@ -7,6 +7,7 @@ from ..stop_conditions import StopCondition
 from ...core.Reaction import Reaction
 from ..filters.conversion_matrix_filters import _TwoSpecieMatrix
 from ..kernels.commons import ProgressCallback, join_matrices
+from ...utils.TimeFunc import TimeFunc
 from ..kernels import utils
 
 
@@ -16,11 +17,13 @@ class Iterator (ABC):
     ARGS:
         - rxn_graph (RxnGraph): reaction graph object with specie information"""
 
-    def __init__(self, rxn_graph: RxnGraph):
+    def __init__(self, rxn_graph: RxnGraph, dask_scheduler: str="threads"):
         self.rxn_graph = rxn_graph
+        self.dask_scheduler = dask_scheduler
 
 
     @da.delayed(pure=False)
+    @TimeFunc
     def iterate_over_species(self, specie1, specie2, ac_filters, conversion_filters):
         """iterate over all possible reactions for 2 species"""
         # create joint ac matrix
@@ -41,6 +44,7 @@ class Iterator (ABC):
 
 
     @da.delayed(pure=False)
+    @TimeFunc
     def iterate_over_a_specie(self, specie, ac_filters, conversion_filters):
         """iterate over all possible reactions for 2 species"""
         # create joint ac matrix
@@ -81,9 +85,9 @@ class Iterator (ABC):
                 ajr.append(self.iterate_over_a_specie(s, ac_filters, conversion_filters))
             if verbose > 0:
                 with ProgressCallback():
-                    ajr = da.compute(ajr, scheduler="threads")[0]
+                    ajr = da.compute(ajr, scheduler=self.dask_scheduler)[0]
             else:
-                ajr = da.compute(ajr, scheduler="threads")[0]
+                ajr = da.compute(ajr, scheduler=self.dask_scheduler)[0]
             for ajr_rxn_graph in ajr:
                 nseed.join(ajr_rxn_graph)
             if verbose > 0:
@@ -99,9 +103,9 @@ class Iterator (ABC):
                     ajr.append(self.iterate_over_species(s1, s2, ac_filters, conversion_filters))
             if verbose > 0:
                 with ProgressCallback():
-                    ajr = da.compute(ajr, scheduler="threads")[0]
+                    ajr = da.compute(ajr, scheduler=self.dask_scheduler)[0]
             else:
-                ajr = da.compute(ajr, scheduler="threads")[0]
+                ajr = da.compute(ajr, scheduler=self.dask_scheduler)[0]
             for ajr_rxn_graph in ajr:
                 nseed.join(ajr_rxn_graph)
             if verbose > 0:
@@ -116,9 +120,9 @@ class Iterator (ABC):
                     ajr.append(self.iterate_over_species(new_species[i], new_species[j], ac_filters, conversion_filters))
             if verbose > 0:
                 with ProgressCallback():
-                    ajr = da.compute(ajr, scheduler="threads")[0]
+                    ajr = da.compute(ajr, scheduler=self.dask_scheduler)[0]
             else:
-                ajr = da.compute(ajr, scheduler="threads")[0]
+                ajr = da.compute(ajr, scheduler=self.dask_scheduler)[0]
             for ajr_rxn_graph in ajr:
                 nseed.join(ajr_rxn_graph)
             if verbose > 0:

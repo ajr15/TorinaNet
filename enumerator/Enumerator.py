@@ -66,11 +66,12 @@ class Enumerator:
         log_table = model_lookup_by_table_name("log")
         self.session.query(log_table).delete()
         # adding reactant relevance entries (always reactants are relevant)
-        entries = []
-        for s in self.rxn_graph.source_species:
-            entries.append(log_table(id=s.identifier, iteration=0, source="reactant"))
-        self.session.add_all(entries)
-        self.session.commit()
+        # entries = []
+        # for s in self.rxn_graph.source_species:
+        #     print(s.identifier, 0, "reactant")
+        #     entries.append(log_table(id=s.identifier, iteration=0, source="reactant"))
+        # self.session.add_all(entries)
+        # self.session.commit()
 
     def load_rxn_graph(self) -> tn.core.RxnGraph:
         """Method to load the most recent uncharged reaction graph from database"""
@@ -173,16 +174,15 @@ class SimpleEnumerator (Enumerator):
 
     @staticmethod
     def filter_bad_geometry_species(db_session):
-        log_table = model_lookup_by_table_name("log")
-        specie_table = model_lookup_by_table_name("species")
-        relevant_smiles = db_session.query(log_table.id)
-        return db_session.query(specie_table).filter(
-                        ~(specie_table.good_geometry & specie_table.comp_successful) & specie_table.smiles.in_(relevant_smiles)).all()
+        # we run here with raw SQL as using the models is somewhat unstable
+        q = """SELECT smiles FROM species WHERE NOT (good_geometry == 1 AND successful == 1) AND smiles IN (SELECT id FROM log)"""
+        return [s[0] for s in db_session.execute(q)]
 
     @staticmethod
     def filter_bad_build_species(db_session):
-        specie_table = model_lookup_by_table_name("species")
-        return db_session.query(specie_table).filter(specie_table.xyz == None)
+        # we run here with raw SQL as using the models is somewhat unstable
+        q = """SELECT smiles FROM species WHERE xyz ISNULL"""
+        return [s[0] for s in db_session.execute(q)]
 
     def pre_enumerate(self):
         """Pre-enumeration calculation for calculating source specie's energies and basic sizes for
@@ -192,15 +192,15 @@ class SimpleEnumerator (Enumerator):
             os.mkdir(res_dir)
         # making preparations for MVC-based computations, they require reactant specie calculation prior to the run
         # add reactant molecules & atoms to specie's table
-        specie_table = model_lookup_by_table_name("uncharged_species")
+        specie_table = model_lookup_by_table_name("species")
         # making all species irrelevant for comuputation
         self.session.query(specie_table).update({"relevant": False})
         entries = []
         for s in self.rxn_graph.source_species:
             # adding reactants 
             if self.session.query(specie_table).filter_by(smiles=s.identifier).count() == 0:
-              s_entry = specie_table(hash_key=comps.ReadSpeciesFromGraph.specie_hash_func(s), smiles=s.identifier, charge=0, relevant=True)
-              entries.append(s_entry)
+                s_entry = specie_table(hash_key=comps.ReadSpeciesFromGraph.specie_hash_func(s), smiles=s.identifier, charge=0, relevant=True)
+                entries.append(s_entry)
             else:
                 # if reactant is in table specie, make it relevant for computation
                 self.session.query(specie_table).filter_by(smiles=s.identifier).update({"relevant": True})
@@ -215,6 +215,7 @@ class SimpleEnumerator (Enumerator):
                                       self.program,
                                       self.input_type,
                                       self.comp_kwdict,
+                                      self.output_type.extension,
                                       comp_source="reactant"),
             # read computation results for MVC species
             comps.ReadCompOutput(self.output_type),
@@ -237,7 +238,8 @@ class SimpleEnumerator (Enumerator):
         if not ac_filters:
             self.ac_filters = [
                 tn.iterate.ac_matrix_filters.MaxBondsPerAtom(),
-                tn.iterate.ac_matrix_filters.MaxAtomsOfElement({6: 4, 8: 4, 7: 4})
+                tn.iterate.ac_matrix_filters.MaxAtomsOfElement({6: 4, 8: 4, 7: 4}),
+                tn.iterate.ac_matrix_filters.MaxComponents(2)
             ]
         else:
             self.ac_filters = ac_filters

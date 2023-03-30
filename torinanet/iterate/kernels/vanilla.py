@@ -1,8 +1,10 @@
 """Util functions for vanilla kernel (dask parallelization and no numba accelaration)"""
 from ..filters.conversion_matrix_filters import MaxChangingBonds, OnlySingleBonds, _TwoSpecieMatrix
 from .commons import gen_unique_idx_combinations_for_conv_mats
+from ...utils.TimeFunc import TimeFunc
 import numpy as np
 
+@TimeFunc
 def generate_single_bond_conversion_matrices(ac, conversion_filters, only_single_bonds):
     """Method to generate all single bond conversion matrices for a given ac matrix"""
     # remove the _TwoSpecieMatrix filter for the single conversion matrix formation
@@ -31,7 +33,7 @@ def generate_single_bond_conversion_matrices(ac, conversion_filters, only_single
                         mats.append(mat)
     return mats
 
-
+@TimeFunc
 def generate_conversion_matrices(ac, conversion_filters):
     if not any([isinstance(x, MaxChangingBonds) for x in conversion_filters]):
         raise ValueError("Must set a maximum number of changing bonds in conversion filters")
@@ -54,7 +56,7 @@ def generate_conversion_matrices(ac, conversion_filters):
         if all([c.check(mat) for c in conversion_filters]):
             yield mat
 
-
+@TimeFunc
 def enumerate_over_ac(ac, conv_filters, ac_filters):
     ac_type = ac.__class__
     conv_mats = generate_conversion_matrices(ac.matrix, conv_filters)

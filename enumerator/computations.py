@@ -1,8 +1,9 @@
 import shutil
-from sqlalchemy import Column, ForeignKey, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, Float
 from sqlalchemy.sql import exists, select
 from typing import List
 import os
+from urllib.parse import urlparse
 import dask as da
 import openbabel as ob
 from copy import copy
@@ -11,28 +12,38 @@ from torinax.pipelines.computations import Computation, SqlBase, DaskComputation
 from torinax.utils.openbabel import ob_read_file_to_molecule, molecule_to_obmol
 import torinanet as tn
 
+def safe_smiles_str(smiles: str) -> str:
+    """Method to encode a smiles string in a safe way for using in ORCA I/O files"""
+    return smiles.replace("[", "!").replace("]", "!").replace("(", ".").replace(")", ".")
+
+
 class ReadSpeciesFromGraph (Computation):
 
     """Computation to create main specie table in Database and read it from uncharged ReactionGraph object.
     ARGS:
         - specie_hash_func (Callable[[tn.core.Specie], int]): hash function for a specie"""
 
-    specie_hash_func = tn.core.HashedCollection.FingerprintGenerators.RDKIT(fpSize=1024, numBitsPerFeature=4)
+    base_specie_hash_func = tn.core.HashedCollection.generator_to_hash(tn.core.HashedCollection.FingerprintGenerators.RDKIT, fp_size=256, n_bits_per_feature=4)
     tablename = "species"
     name = "read_species_from_graph"
     __results_columns__ = {
-        "id": Column(Integer, primery_key=True),
-        "hash_key": Column(Integer),
+        "id": Column(Integer, primary_key=True, autoincrement=True),
+        "hash_key": Column(String),
         "smiles": Column(String),
         "charge": Column(Integer, default=0),
         "relevant": Column(Boolean, default=True)
     }
 
+    @classmethod
+    def specie_hash_func(cls, specie):
+        return str(hex(cls.base_specie_hash_func(specie)))
+
     def specie_in_db(self, db_session, specie: tn.core.Specie) -> bool:
         """Check if specie is in the specie table in the db"""
         hash_key = self.specie_hash_func(specie)
         # checks by hash_key if specie exists in the specie table
-        smiles = db_session.query(model_lookup_by_table_name("species").smiles).filter_by(hash_key=hash_key).all()
+        smiles = db_session.query(self.sql_model.smiles).filter_by(hash_key=hash_key).all()
+        smiles = [s[0] for s in smiles] # artifact of sqlalchemy query results (list of tuples instead of list of strings)
         # if smiles list is empty -> specie does not exist
         if len(smiles) == 0:
             return False
@@ -57,7 +68,7 @@ class ReadSpeciesFromGraph (Computation):
             rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         entries = []
         # updating relevance of existing species
-        for specie in db_session.execute(select(self.sql_model)).all():
+        for specie in db_session.query(self.sql_model).all():
             s = tn.core.Specie(specie.smiles)
             if rxn_graph.has_specie(s):
                 specie.relevant = True
@@ -71,6 +82,7 @@ class ReadSpeciesFromGraph (Computation):
                 entry = self.sql_model(
                                         hash_key=self.specie_hash_func(specie),
                                         smiles=specie.ac_matrix.to_specie().identifier,
+                                        charge=0, relevant=True
                                         )
                 entries.append(entry)
         return entries
@@ -119,7 +131,7 @@ class BuildMolecules (Computation):
         for specie in species:
             future = self.run(
                 specie.smiles,
-                os.path.join(xyz_dir, specie.smiles + ".xyz"),
+                os.path.join(xyz_dir, safe_smiles_str(specie.smiles) + ".xyz"),
             )
             futures.append(future)
         # computing futures and updating db with results
@@ -146,13 +158,13 @@ class ExternalCalculation (SlurmComputation):
         self.output_ext = output_extension
         self.comp_source = comp_source
         # creating relevance table for computation results
-        self.comp_log_sql = comp_sql_model_creator("log", {"iteration": Column(Integer), "source": Column(String)})
+        self.comp_log_sql = comp_sql_model_creator("log", {"id": Column(String, primary_key=True), "iteration": Column(Integer), "source": Column(String)})
         super().__init__(slurm_client)
 
     def single_calc(self, xyz_path, comp_dir, smiles, charge):
         """Method to make an sql entry and command line string for single SLURM run"""
         molecule = ob_read_file_to_molecule(xyz_path)
-        in_file_path = os.path.join(comp_dir, "inputs", smiles + "." + self.input_type.extension)
+        in_file_path = os.path.join(comp_dir, "inputs", safe_smiles_str(smiles) + "." + self.input_type.extension)
         # calculating number of electrons
         n_elec = 0
         for atom in molecule.atoms:
@@ -184,18 +196,22 @@ class ExternalCalculation (SlurmComputation):
             os.mkdir(input_dir)
         # now continuing to main computation
         # finding all species for calculation - relevant species that were not calculated before
-        species = db_session.query(self.sql_model).filter_by(relevant=True).except_(db_session.query(self.sql_model.comp_output.isnot(None) & self.sql_model.comp_input.isnot(None))).all()
+        species = db_session.query(self.sql_model).filter((self.sql_model.relevant==True) & ~(self.sql_model.comp_output.isnot(None) & self.sql_model.comp_input.isnot(None))).all()
         cmds = []
         entries = []
         for specie in species:
             # add log of computation
-            entries.append(self.comp_log_sql(id=specie.smiles, iteration=iter_count, source=self.comp_source))
             # making run command & writing input file
             comp_input, cmd_str = self.single_calc(specie.xyz, comp_dir, specie.smiles, specie.charge)
             # update the specie table with i/o of computation
-            specie.comp_output = os.path.join(comp_dir, specie.smiles + "_out", specie.smiles + "." + self.output_ext)
+            specie.comp_output = os.path.join(comp_dir, safe_smiles_str(specie.smiles) + "_out", safe_smiles_str(specie.smiles) + "." + self.output_ext)
             specie.comp_input = comp_input
             cmds.append(cmd_str)
+        # adding log computations to properly add calculated species to log 
+        # ALL relevant species should be in the log
+        smiles = [s[0] for s in db_session.execute("SELECT smiles FROM species WHERE relevant == 1 AND NOT smiles IN (SELECT id FROM log)")]
+        for smile in smiles:
+            entries.append(self.comp_log_sql(id=smile, iteration=iter_count, source=self.comp_source))
         db_session.commit()
         return entries, cmds
 
@@ -207,7 +223,7 @@ class ReadCompOutput (Computation):
     name = "read_energies"
     tablename = "species"
     __results_columns__ = {
-        "energy": Column(String(100)),
+        "energy": Column(Float),
         "good_geometry": Column(Boolean),
         "successful": Column(Boolean),
         "__table_args__": {'extend_existing': True}
@@ -247,17 +263,17 @@ class ReadCompOutput (Computation):
         except:
             print("parsing error in", output_path)
             return {  
-                      "comp_successful": False,
+                      "successful": False,
                   }
         return {
             "energy": out_d["final_energy"],
-            "comp_successful": out_d["finished_normally"],
+            "successful": out_d["finished_normally"],
             "good_geometry": cls.compare_species(original_mol, out_mol)
         }
 
     def execute(self, db_session):
         # getting all species for reading
-        species = db_session.query(self.sql_model).where(db_session.query(self.sql_model.comp_output.isnot(None))).all()
+        species = db_session.query(self.sql_model).filter(self.sql_model.comp_output.isnot(None) & self.sql_model.energy.is_(None)).all()
         # making list of futures for calculation
         futures = []
         for specie in species:
@@ -266,7 +282,6 @@ class ReadCompOutput (Computation):
                 specie.comp_output,
                 specie.xyz
             ))
-        futures = self.make_futures(db_session)
         dicts = da.compute(futures)[0]
         # updating table according to results
         for specie, d in zip(species, dicts):
@@ -297,20 +312,21 @@ class ReduceGraphByCriterion (Computation):
         rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="rxn_graph_path").one()[0]
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         print("BEFORE REDUCTION")
-        print("n species =", len(rxn_graph.species))
-        print("n reactions =", len(rxn_graph.reactions))
+        print("n species =", rxn_graph.get_n_species())
+        print("n reactions =", rxn_graph.get_n_reactions())
         # finding specie IDs to remove
-        species = self.specie_query_func(db_session)
+        smiles_strs = self.specie_query_func(db_session)
         # removing IDs from graph
-        for specie in species:
-            s = tn.core.Specie(specie.smiles)
+        for smiles in smiles_strs:
+            print("removing", smiles)
+            s = tn.core.Specie(smiles)
             if rxn_graph.has_specie(s):
                 rxn_graph = rxn_graph.remove_specie(s)
         # saving reduced graph
         rxn_graph.save(rxn_graph_path)
         print("AFTER REDUCTION")
-        print("n species =", len(rxn_graph.species))
-        print("n reactions =", len(rxn_graph.reactions))
+        print("n species =", rxn_graph.get_n_species())
+        print("n reactions =", rxn_graph.get_n_reactions())
         # if a local copy is desired, making one
         if self.local_file_name:
             iter_count = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
@@ -336,42 +352,31 @@ class ReduceGraphByEnergyReducer (Computation):
 
     def update_specie_energies(self, db_session, rxn_graph) -> tn.core.RxnGraph:
         """Method to update the species energies in the reaction graph from the computation"""
-        species_table = model_lookup_by_table_name("species")
         # we use the "log" table to make sure that we use only species with "known energy" for the reduction
         # this is done to allow repr re-using the same DB file for multiple runs.
-        comp_log_table = model_lookup_by_table_name("log")
-        known_smiles = db_session.query(comp_log_table.smiles)
-        species = db_session.query(species_table).filter(
-                        species_table.good_geometry & species_table.successful & species_table.smiles.in_(known_smiles)).all()
-        for specie in species:
-            s = tn.core.Specie(specie.smiles)
+        # we use raw SQL because the "model_lookup_by_table_name" is unstable
+        smiles_energies = db_session.execute("SELECT smiles, energy FROM species WHERE good_geometry == 1 AND successful == 1 AND smiles IN (SELECT id FROM log)")
+        for smiles, energy in smiles_energies:
+            s = tn.core.Specie(smiles)
             if rxn_graph.has_specie(s):
-                s = rxn_graph.specie_collection.get(s)
-                s.properties["energy"] = float(specie.energy)
+                # workaround to get the specie from the graph and update it. this method returns the "correct" specie.
+                # using other methods such as specie_collection.get require proper reading with AC matrix
+                s = rxn_graph.add_specie(s)
+                s.properties["energy"] = float(energy)
+        #         print(s, s.identifier, s.properties["energy"])
+        # print("*****")
+        # for s in rxn_graph.species:
+        #     print(s)
+        #     print(s.identifier, s.properties)
         return rxn_graph
-
-    # def reduce_bad_geometries(self, db_session, rxn_graph) -> tn.core.RxnGraph:
-    #     """Method to reduce species with bad geometries from graph"""
-    #     comp_out = model_lookup_by_table_name(self.energy_output_tablename)
-    #     relevance_model = model_lookup_by_table_name(self.energy_relevance_tablename)
-    #     relevant_ids = db_session.query(relevance_model.id)
-    #     sids = db_session.query(comp_out.id).filter(
-    #                     ~(comp_out.good_geometry & comp_out.successful) & comp_out.id.in_(relevant_ids)).all()
-    #     # removing IDs from graph
-    #     for sid in sids:
-    #         sid = sid[0]
-    #         if rxn_graph.has_specie_id(sid):
-    #             specie = rxn_graph.get_specie_from_id(sid)
-    #             rxn_graph = rxn_graph.remove_specie(specie)
-    #     return rxn_graph
 
     def execute(self, db_session) -> List[SqlBase]:
         # reading reaction graph path
         rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="rxn_graph_path").one()[0]
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         print("BEFORE REDUCTION")
-        print("n species =", len(rxn_graph.species))
-        print("n reactions =", len(rxn_graph.reactions))
+        print("n species =", rxn_graph.get_n_species())
+        print("n reactions =", rxn_graph.get_n_reactions())
         # removing species with bad geometry or failed computation - LEGACY NOW IT IS DONE BY DEDICATED ReduceGraphByCriterion COMPUTATION !
         # rxn_graph = self.reduce_bad_geometries(db_session, rxn_graph)
         # updating energy values for species
@@ -380,8 +385,8 @@ class ReduceGraphByEnergyReducer (Computation):
         rxn_graph = self.reducer.apply(rxn_graph)
         rxn_graph.save(rxn_graph_path)
         print("AFTER REDUCTION")
-        print("n species =", len(rxn_graph.species))
-        print("n reactions =", len(rxn_graph.reactions))
+        print("n species =", rxn_graph.get_n_species())
+        print("n reactions =", rxn_graph.get_n_reactions())
         if self.local_file_name:
             iter_count = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
             res_dir = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="results_dir").one()[0]
@@ -411,11 +416,13 @@ class ElementaryReactionEnumeration (Computation):
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         # setting up & enumerating
         stop_cond = tn.iterate.stop_conditions.MaxIterNumber(1)
-        iterator = tn.iterate.Iterator(rxn_graph)
+        iterator = tn.iterate.Iterator(rxn_graph, dask_scheduler="synchronous")
         rxn_graph = iterator.enumerate_reactions(self.conversion_filters, 
                                                     self.ac_filters, 
                                                     stop_cond, 
                                                     verbose=1)
+        # showing timing data
+        tn.utils.show_time_data()
         # updating SQL
         entries = self.update_species_comp.execute(db_session, rxn_graph)
         # saving graph to disk
@@ -460,7 +467,7 @@ class FindMvc (Computation):
             mvc = self.greedy_finder.find_mvc(rxn_graph)
         # inserting MVC data to database
         print("Found MVC with {} species".format(len(mvc)))
-        mvc_smiles = set([s.idetifier for s in mvc])
+        mvc_smiles = set([s.identifier for s in mvc])
         species = db_session.query(model_lookup_by_table_name("species")).all()
         for specie in species:
             specie.relevant = (specie.smiles in mvc_smiles)

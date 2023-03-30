@@ -1,4 +1,5 @@
 from typing import Optional
+import pandas as pd
 from ..algorithms.ShortestPathAnalyzer import ShortestPathAnalyzer
 
 class SimpleEnergyReduction: 
@@ -53,6 +54,7 @@ class MinEnergyReduction:
         # for every specie in the graph, if it doesn't have energy data - put the minimum value
         for specie in rxn_graph.species:
             if not "energy" in specie.properties:
-                n_electrons = sum(specie.ac_matrix.get_atoms()) - specie.charge
+                c = specie.charge if specie.charge is not None else 0
+                n_electrons = sum(specie.ac_matrix.get_atoms()) - c
                 specie.properties["energy"] = self.min_electron_energy * n_electrons
         return self.reducer.apply(rxn_graph)

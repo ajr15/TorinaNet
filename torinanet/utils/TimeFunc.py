@@ -1,4 +1,5 @@
 from time import time
+from typing import Generator
 import pandas as pd
 
 time_data = {}
