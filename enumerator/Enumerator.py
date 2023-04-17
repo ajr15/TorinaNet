@@ -8,6 +8,7 @@ import torinanet as tn
 import torinax as tx
 from torinax.pipelines.computations import SqlBase, run_computations, model_lookup_by_table_name
 from torinax.clients import SlurmClient
+from torinax.utils import atomic_numer_to_symbol
 from . import computations as comps
 
 
@@ -113,7 +114,7 @@ class SimpleEnumerator (Enumerator):
                     input_type: Optional[tx.io.FileParser]=None,
                     output_type: Optional[tx.io.FileParser]=None,
                     reaction_energy_th: float=0.064, # Ha = 40 kcal/mol
-                    min_electron_energy: Optional[float]=None, 
+                    min_atomic_energy: Optional[float]=None, 
                     use_shortest_path: bool=True,
                     sp_energy_th: float=0.096, # Ha = 60 kcal/mol
                     use_mvc: bool=True,
@@ -150,14 +151,15 @@ class SimpleEnumerator (Enumerator):
                             # filter species with bad geometry
                             comps.ReduceGraphByCriterion(self.filter_bad_geometry_species)
                             ]
-        if use_mvc or min_electron_energy:
+        if use_mvc or min_atomic_energy:
             # energy based reduction with MVC species data
             pipeline += [comps.ReduceGraphByEnergyReducer(
-                            tn.analyze.network_reduction.EnergyReduction.MinEnergyReduction(reaction_energy_th,
-                                                                                            min_electron_energy,
+                            tn.analyze.network_reduction.EnergyReduction.AtomicEnergyReducer(reaction_energy_th,
+                                                                                            min_atomic_energy,
                                                                                             use_shortest_path,
                                                                                             sp_energy_th),
-                            "mvc_energy_reduced_graph.rxn")]
+                            "mvc_energy_reduced_graph.rxn",
+                            use_atomization_energies=True)]
         # now, calculating energies for every specie in graph
         pipeline += [comps.ExternalCalculation(slurm_client, self.program, self.input_type, self.comp_kwdict, self.output_type.extension),
             # read computation results
@@ -196,6 +198,7 @@ class SimpleEnumerator (Enumerator):
         # making all species irrelevant for comuputation
         self.session.query(specie_table).update({"relevant": False})
         entries = []
+        atoms = [] # keeping tracks of atoms in the system, to submit computations for them as well
         for s in self.rxn_graph.source_species:
             # adding reactants 
             if self.session.query(specie_table).filter_by(smiles=s.identifier).count() == 0:
@@ -204,6 +207,17 @@ class SimpleEnumerator (Enumerator):
             else:
                 # if reactant is in table specie, make it relevant for computation
                 self.session.query(specie_table).filter_by(smiles=s.identifier).update({"relevant": True})
+            # going over atomic species & adding atom specie computation for atomic energy comp of MVC
+            for atom in s.ac_matrix.get_atoms():
+                sp = tn.core.BinaryAcMatrix.from_specie(tn.core.Specie("[{}]".format(atomic_numer_to_symbol(atom)))).to_specie()
+                if not atom in atoms:
+                    atoms.append(atom)
+                    if self.session.query(specie_table).filter_by(smiles=sp.identifier).count() == 0:
+                        s_entry = specie_table(hash_key=comps.ReadSpeciesFromGraph.specie_hash_func(sp), smiles=sp.identifier, charge=0, relevant=True)
+                        entries.append(s_entry)
+                    else:
+                        # if reactant is in table specie, make it relevant for computation
+                        self.session.query(specie_table).filter_by(smiles=sp.identifier).update({"relevant": True})
         self.session.add_all(entries)
         self.session.commit() 
         # building molecules, calculating energies, reading results

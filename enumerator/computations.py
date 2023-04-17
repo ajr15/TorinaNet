@@ -9,7 +9,7 @@ import openbabel as ob
 from copy import copy
 from typing import Optional, Callable
 from torinax.pipelines.computations import Computation, SqlBase, DaskComputation, SlurmComputation, model_lookup_by_table_name, comp_sql_model_creator
-from torinax.utils.openbabel import ob_read_file_to_molecule, molecule_to_obmol
+from torinax.utils.openbabel import ob_read_file_to_molecule, molecule_to_obmol, atomic_numer_to_symbol
 import torinanet as tn
 
 def safe_smiles_str(smiles: str) -> str:
@@ -344,14 +344,22 @@ class ReduceGraphByEnergyReducer (Computation):
     name = "graph_energy_reduction"
     tablename = None
     
-    def __init__(self, reducer, local_file_name: Optional[str]=None) -> None:
+    def __init__(self, reducer, local_file_name: Optional[str]=None, use_atomization_energies: bool=False) -> None:
         self.reducer = reducer
         self.local_file_name = local_file_name
+        self.use_atomization_energies = use_atomization_energies
         self.update_species_comp = ReadSpeciesFromGraph()
         super().__init__()
 
     def update_specie_energies(self, db_session, rxn_graph) -> tn.core.RxnGraph:
         """Method to update the species energies in the reaction graph from the computation"""
+        # if we need to base the calculation on atomization energy, collect atom information 
+        atoms_energy_dict = {}
+        if self.use_atomization_energies:
+            for sp in rxn_graph.source_species:
+                for atom in sp.ac_matrix.get_atoms():
+                    energy = db_session.execute("SELECT energy FROM species WHERE smiles == '[{}]'".format(atomic_numer_to_symbol(atom))).fetchone()[0]
+                    atoms_energy_dict[atom] = energy
         # we use the "log" table to make sure that we use only species with "known energy" for the reduction
         # this is done to allow repr re-using the same DB file for multiple runs.
         # we use raw SQL because the "model_lookup_by_table_name" is unstable
@@ -362,7 +370,11 @@ class ReduceGraphByEnergyReducer (Computation):
                 # workaround to get the specie from the graph and update it. this method returns the "correct" specie.
                 # using other methods such as specie_collection.get require proper reading with AC matrix
                 s = rxn_graph.add_specie(s)
-                s.properties["energy"] = float(energy)
+                if self.use_atomization_energies:
+                    atoms_e = sum([atoms_energy_dict[atom] for atom in s.ac_matrix.get_atoms()])
+                    s.properties["energy"] = float(energy) - atoms_e
+                else:
+                    s.properties["energy"] = float(energy)
         #         print(s, s.identifier, s.properties["energy"])
         # print("*****")
         # for s in rxn_graph.species:

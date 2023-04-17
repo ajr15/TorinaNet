@@ -39,22 +39,20 @@ class SimpleEnergyReduction:
                     rxn_graph = rxn_graph.remove_reaction(rxn)
         return rxn_graph
 
-class MinEnergyReduction:
+class AtomicEnergyReducer:
 
-    """Method to reduce a graph based on minimal specie energy"""
+    """Method to reduce a graph based on minimal specie atomic energy"""
 
     def __init__(self, reaction_energy_th: float,
-                 min_electron_energy: float,
+                 min_atomic_energy: float,
                  use_shortest_paths=False,
                  sp_energy_th: float=20):
-        self.min_electron_energy = min_electron_energy
+        self.min_atomic_energy = min_atomic_energy
         self.reducer = SimpleEnergyReduction(reaction_energy_th, use_shortest_paths, sp_energy_th)
 
     def apply(self, rxn_graph):
         # for every specie in the graph, if it doesn't have energy data - put the minimum value
         for specie in rxn_graph.species:
             if not "energy" in specie.properties:
-                c = specie.charge if specie.charge is not None else 0
-                n_electrons = sum(specie.ac_matrix.get_atoms()) - c
-                specie.properties["energy"] = self.min_electron_energy * n_electrons
+                specie.properties["energy"] = self.min_atomic_energy
         return self.reducer.apply(rxn_graph)

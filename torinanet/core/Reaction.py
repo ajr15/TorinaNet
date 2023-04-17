@@ -95,7 +95,11 @@ class Reaction:
 
     def __eq__(self, x):
         if not type(x) is Reaction:
-            raise ValueError("Cannot compare reactions to object with type {}".format(type(x)))
+            # in case x is None, it is not equal to the reaction (do not have the same type)
+            if x is None:
+                return False
+            else:
+                raise ValueError("Cannot compare reactions to object with type {}".format(type(x)))
         if len(self.reactants) == len(x.reactants) and len(self.products) == len(x.products):
             return all([s in self.reactants for s in x.reactants]) and all([s in self.products for s in x.products]) and \
                     all([s in x.reactants for s in self.reactants]) and all([s in x.products for s in self.products])
