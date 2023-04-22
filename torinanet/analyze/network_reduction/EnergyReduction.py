@@ -22,12 +22,13 @@ class SimpleEnergyReduction:
     def apply(self, rxn_graph):
         # analyzing shortest paths if needed
         if self.use_shortest_paths:
-            prop_func = self.calc_reaction_energy
+            prop_func = lambda rxn: max(self.calc_reaction_energy(rxn), 0)
             analyzer = ShortestPathAnalyzer(rxn_graph, prop_func=prop_func)
             for specie in rxn_graph.species:
                 # ensure specie is in graph after some reductions
                 if rxn_graph.has_specie(specie):
-                    s_energy = analyzer.get_distance_from_source(specie)
+                    path_rxns = analyzer.get_path_to_source(specie)
+                    s_energy = sum([self.calc_reaction_energy(rxn) for rxn in path_rxns])
                     if s_energy > self.sp_energy_th:
                         rxn_graph = rxn_graph.remove_specie(specie)
         # analyzing reaction energies

@@ -1,3 +1,4 @@
+import pickle
 from typing import Callable, Any, Iterator, Tuple
 from copy import copy
 from itertools import combinations, chain
@@ -5,6 +6,8 @@ from rdkit.DataStructs.cDataStructs import BitVectToText
 from rdkit.Chem import rdFingerprintGenerator
 from enum import Enum
 import hashlib
+from dask import distributed
+from distributed.protocol.serialize import dask_serialize, dask_deserialize
 from .HashedCollection import HashedCollection
 from ...Reaction import Reaction
 
@@ -152,37 +155,111 @@ class FuncWrapper:
     def __call__(self, *args, **kwds):
         return self.f(*args, **kwds)
 
-class FingerprintGenerators (Enum):
+class FingerprintAlgorithms (Enum):
+
+    RDKIT = 1
+    MORGAN = 2
+    TOPOLOGICAL = 3
+    ATOMPAIRS = 4
     
-    RDKIT = FuncWrapper(rdFingerprintGenerator.GetRDKitFPGenerator)
-    MORGAN = FuncWrapper(rdFingerprintGenerator.GetMorganGenerator)
-    TOPOLOGICAL = FuncWrapper(rdFingerprintGenerator.GetTopologicalTorsionGenerator)
-    ATOMPAIRS = FuncWrapper(rdFingerprintGenerator.GetAtomPairGenerator)
+    # RDKIT = FuncWrapper(rdFingerprintGenerator.GetRDKitFPGenerator)
+    # MORGAN = FuncWrapper(rdFingerprintGenerator.GetMorganGenerator)
+    # TOPOLOGICAL = FuncWrapper(rdFingerprintGenerator.GetTopologicalTorsionGenerator)
+    # ATOMPAIRS = FuncWrapper(rdFingerprintGenerator.GetAtomPairGenerator)
 
-    def __call__(self, *args, **kwds):
-        return self.value(*args, **kwds)
+    # def __call__(self, *args, **kwds):
+    #     return self.value(*args, **kwds)
 
-def generator_to_hash(hash_generator, fp_size: int, n_bits_per_feature: int):
-    if hash_generator == FingerprintGenerators.RDKIT:
-        gen = hash_generator(fpSize=fp_size, numBitsPerFeature=n_bits_per_feature)
-    else:
-        gen = hash_generator(fpSize=fp_size)
-    return lambda x: int(BitVectToText(gen.GetFingerprint(x.to_rdmol())), 2)
+    def get_algorithm(self):
+        if self.value == 1:
+            return rdFingerprintGenerator.GetRDKitFPGenerator
+        elif self.value == 2:
+            return rdFingerprintGenerator.GetMorganGenerator
+        elif self.value == 3:
+            return rdFingerprintGenerator.GetTopologicalTorsionGenerator
+        elif self.value == 4:
+            return rdFingerprintGenerator.GetAtomPairGenerator
+
+# def generator_to_hash(hash_generator, fp_size: int, n_bits_per_feature: int):
+#     if hash_generator == FingerprintGenerators.RDKIT:
+#         gen = hash_generator(fpSize=fp_size, numBitsPerFeature=n_bits_per_feature)
+#     else:
+#         gen = hash_generator(fpSize=fp_size)
+#     return lambda x: int(BitVectToText(gen.GetFingerprint(x.to_rdmol())), 2)
+
+# def specie_hash_function_generator(fp_size: int, n_bits_per_feature: int):
+#     # first make normal combinations of all pairs of generators
+#     combos = combinations(FingerprintGenerators, 2)
+#     for combo in combos:
+#         gen1 = generator_to_hash(combo[0], fp_size, n_bits_per_feature)
+#         gen2 = generator_to_hash(combo[1], fp_size, n_bits_per_feature)
+#         yield gen1, gen2
+#     # later make only pairs with RDKIT fingerprint with increasing bits per feature
+#     while True:
+#         n_bits_per_feature += 1
+#         for gen in [FingerprintGenerators.MORGAN, FingerprintGenerators.TOPOLOGICAL, FingerprintGenerators.ATOMPAIRS]:
+#             gen1 = generator_to_hash(gen, fp_size, n_bits_per_feature)
+#             gen2 = generator_to_hash(FingerprintGenerators.RDKIT, fp_size, n_bits_per_feature)
+#             yield gen1, gen2
+
+
+class RdkitFingerprintGenerator:
+
+    def __init__(self, algorithm: FingerprintAlgorithms, fp_size: int, n_bits_per_feature: int):
+        self.algorithm = algorithm
+        self.fp_size = fp_size
+        self.n_bits_per_feature = n_bits_per_feature
+        if algorithm == FingerprintAlgorithms.RDKIT:
+            self._rdkit_generator = algorithm.get_algorithm() (fpSize=fp_size, numBitsPerFeature=n_bits_per_feature)
+        else:
+            self._rdkit_generator = algorithm.get_algorithm() (fpSize=fp_size)
+
+    def __call__(self, x):
+        # method to generate the binary fingerprint using the RDKit generator
+        return int(BitVectToText(self._rdkit_generator.GetFingerprint(x.to_rdmol())), 2)
+
+    def __getstate__(self):
+        # method to define custom pickling of an object, this is what we use to not pickle the C++ RDKit objects
+        d = {
+            "algorithm": self.algorithm,
+            "fp_size": self.fp_size,
+            "n_bits_per_feature": self.n_bits_per_feature
+        }
+        return d
+    
+    def __setstate__(self, d):
+        self.__init__(**d)
+    
+# # registering custom serialization / deserialization of RdkitFingerprintGenerator - it is not serialized because RDKit is writen with C++
+# # we do it following the dask documentation at https://distributed.dask.org/en/latest/serialization.html#distributed.protocol.serialize.dask_serialize
+
+# @dask_serialize.register(RdkitFingerprintGenerator)
+# def serialize(generator: RdkitFingerprintGenerator):
+#     header = {}
+#     frames = [generator.serialize()]
+#     return header, frames
+
+
+# @dask_deserialize.register(RdkitFingerprintGenerator)
+# def deserialize(header, frames):
+#     return RdkitFingerprintGenerator.from_binary(frames[0])
+
 
 def specie_hash_function_generator(fp_size: int, n_bits_per_feature: int):
     # first make normal combinations of all pairs of generators
-    combos = combinations(FingerprintGenerators, 2)
-    for combo in combos:
-        gen1 = generator_to_hash(combo[0], fp_size, n_bits_per_feature)
-        gen2 = generator_to_hash(combo[1], fp_size, n_bits_per_feature)
+    algorithm_combos = combinations(FingerprintAlgorithms, 2)
+    for combo in algorithm_combos:
+        gen1 = RdkitFingerprintGenerator(combo[0], fp_size, n_bits_per_feature)
+        gen2 = RdkitFingerprintGenerator(combo[1], fp_size, n_bits_per_feature)
         yield gen1, gen2
     # later make only pairs with RDKIT fingerprint with increasing bits per feature
     while True:
         n_bits_per_feature += 1
-        for gen in [FingerprintGenerators.MORGAN, FingerprintGenerators.TOPOLOGICAL, FingerprintGenerators.ATOMPAIRS]:
-            gen1 = generator_to_hash(gen, fp_size, n_bits_per_feature)
-            gen2 = generator_to_hash(FingerprintGenerators.RDKIT, fp_size, n_bits_per_feature)
+        for algorithm in [FingerprintAlgorithms.MORGAN, FingerprintAlgorithms.TOPOLOGICAL, FingerprintAlgorithms.ATOMPAIRS]:
+            gen1 = RdkitFingerprintGenerator(algorithm, fp_size, n_bits_per_feature)
+            gen2 = RdkitFingerprintGenerator(FingerprintAlgorithms.RDKIT, fp_size, n_bits_per_feature)
             yield gen1, gen2
+
 
 class CuckooSpecieCollection (CuckooHashedCollection):
 
@@ -240,20 +317,40 @@ class CuckooReactionCollection (CuckooHashedCollection):
         raise NotImplementedError("Currently this collection does not support to_dict method")
 
 
-def hash_rxn_indep(specie_hash_func, rxn: Reaction):
-    s = "{}={}".format(
-        ".".join(sorted([str(specie_hash_func(s)) for s in rxn.reactants])),
-        ".".join(sorted([str(specie_hash_func(s)) for s in rxn.products]))
-    ).encode("utf-8")
-    return int(hashlib.sha256(s).hexdigest(), 16)
+# def hash_rxn_indep(specie_hash_func, rxn: Reaction):
+#     s = "{}={}".format(
+#         ".".join(sorted([str(specie_hash_func(s)) for s in rxn.reactants])),
+#         ".".join(sorted([str(specie_hash_func(s)) for s in rxn.products]))
+#     ).encode("utf-8")
+#     return int(hashlib.sha256(s).hexdigest(), 16)
+
+# def reaction_hash_function_generator_indep(fp_size: int, n_bits_per_feature: int):
+#     hashes = specie_hash_function_generator(fp_size, n_bits_per_feature)
+#     for combo in hashes:
+#         gen1 = lambda rxn: hash_rxn_indep(combo[0], rxn)
+#         gen2 = lambda rxn: hash_rxn_indep(combo[1], rxn)
+#         yield gen1, gen2
+
+class IndepReactionHash:
+
+    """Pickle-friendly reaction hasher (avoides using lambda functions)"""
+
+    def __init__(self, specie_hash: RdkitFingerprintGenerator):
+        self.specie_hash = specie_hash
+
+    def __call__(self, rxn: Reaction):
+        s = "{}={}".format(
+            ".".join(sorted([str(self.specie_hash(s)) for s in rxn.reactants])),
+            ".".join(sorted([str(self.specie_hash(s)) for s in rxn.products]))
+        ).encode("utf-8")
+        return int(hashlib.sha256(s).hexdigest(), 16)
 
 def reaction_hash_function_generator_indep(fp_size: int, n_bits_per_feature: int):
     hashes = specie_hash_function_generator(fp_size, n_bits_per_feature)
     for combo in hashes:
-        gen1 = lambda rxn: hash_rxn_indep(combo[0], rxn)
-        gen2 = lambda rxn: hash_rxn_indep(combo[1], rxn)
+        gen1 = IndepReactionHash(combo[0])
+        gen2 = IndepReactionHash(combo[1])
         yield gen1, gen2
-        
 
 class IndepCuckooReactionCollection (CuckooHashedCollection):
 

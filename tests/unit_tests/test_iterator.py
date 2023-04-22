@@ -8,7 +8,7 @@ class TestIterator (unittest.TestCase):
         g = tn.core.RxnGraph()
         s1 = g._read_specie_with_ac_matrix(tn.core.Specie("C"))
         s2 = g._read_specie_with_ac_matrix(tn.core.Specie("[H]"))
-        iterator = tn.iterate.Iterator(tn.core.RxnGraph())
+        iterator = tn.iterate.Iterator(tn.core.RxnGraph(), dask_scheduler="processes")
         conv_filters = [tn.iterate.conversion_matrix_filters.MaxChangingBonds(3),
                                 tn.iterate.conversion_matrix_filters.OnlySingleBonds()]
         ac_filters = [tn.iterate.ac_matrix_filters.MaxBondsPerAtom(), 
@@ -23,7 +23,7 @@ class TestIterator (unittest.TestCase):
     def test_single_specie(self):
         g = tn.core.RxnGraph()
         s1 = g._read_specie_with_ac_matrix(tn.core.Specie("C"))
-        iterator = tn.iterate.Iterator(tn.core.RxnGraph())
+        iterator = tn.iterate.Iterator(tn.core.RxnGraph(), dask_scheduler="processes")
         conv_filters = [tn.iterate.conversion_matrix_filters.MaxChangingBonds(3),
                                 tn.iterate.conversion_matrix_filters.OnlySingleBonds()]
         ac_filters = [tn.iterate.ac_matrix_filters.MaxBondsPerAtom(), 
@@ -39,7 +39,7 @@ class TestIterator (unittest.TestCase):
         g.set_source_species([
             tn.core.Specie("O")
         ], force=True)
-        iterator = tn.iterate.Iterator(g)
+        iterator = tn.iterate.Iterator(g, dask_scheduler="processes")
         conv_filters = [tn.iterate.conversion_matrix_filters.MaxChangingBonds(3),
                                 tn.iterate.conversion_matrix_filters.OnlySingleBonds()]
         ac_filters = [tn.iterate.ac_matrix_filters.MaxBondsPerAtom(), 

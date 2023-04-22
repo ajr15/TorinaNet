@@ -1,0 +1,4 @@
+,n_workers,scheduler,time
+0,2.0,processes,94.24373292922974
+1,4.0,processes,94.6763927936554
+2,8.0,processes,83.34016513824463

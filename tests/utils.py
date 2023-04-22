@@ -47,8 +47,10 @@ def reaction_generator(seed_species: List[Specie], max_changing_bonds: int) -> I
                 ajr.extend(reaction.products)
                 yield reaction
 
-def specie_generator(seed_species: List[Specie], max_changing_bonds: int) -> Iterable[Reaction]:
+def specie_generator(seed_species: List[Specie], max_changing_bonds: int, random_seed=None) -> Iterable[Reaction]:
     """Random reaction generator using BinaryAcMatrix. this is supposed to emulate the behavior of an iterator but cheaper"""
+    if random_seed is not None:
+        np.random.seed(random_seed)
     ajr = [BinaryAcMatrix.from_specie(s).to_specie() for s in seed_species]
     seed = set([s.identifier for s in ajr])
     # cycling on species to make reactions

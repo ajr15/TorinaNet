@@ -253,23 +253,24 @@ class RxnGraph:
             nrxn_graph.set_source_species(self.source_species, force=True)
         return nrxn_graph
 
-    def _remove_object(self, obj: Union[Specie, Reaction], remove_neighbors: bool=False):
+    def _remove_objects(self, objects: Union[List[Specie], List[Reaction]], remove_neighbors: bool=False):
         """Internal method to remove an object (reaction or specie) from the reaction graph using deep first search"""
         if self.source_species is None:
             raise NotImplementedError("The graph doesnt have defined source reactants. This method is undefined in this case")
         # getting desired node
-        if type(obj) is Specie:
-            node = self.specie_collection.get_key(obj)
-        elif type(obj) is Reaction:
-            node = self.reaction_collection.get_key(obj)
+        if type(objects[0]) is Specie:
+            nodes = [self.specie_collection.get_key(obj) for obj in objects]
+        elif type(objects[0]) is Reaction:
+            nodes = [self.reaction_collection.get_key(obj) for obj in objects]
         else:
-            raise TypeError("Unsuported type for deletion {}".format(type(obj)))
+            raise TypeError("Unsuported type for deletion {}".format(type(objects[0])))
         # convert to networkx graph
         network = self.to_networkx_graph(use_internal_id=True)
         # finding nodes to remove
-        nodes_to_remove = [node]
+        nodes_to_remove = nodes
         if remove_neighbors:
-            nodes_to_remove += nx.all_neighbors(network, node)
+            for node in nodes:
+                nodes_to_remove += nx.all_neighbors(network, node)
         # removing nodes
         network.remove_nodes_from(nodes_to_remove)
         # running dfs to find other nodes to remove
@@ -288,7 +289,25 @@ class RxnGraph:
         if not self.has_specie(s):
             raise ValueError("Desired specie is not in the graph !")
         # removing specie & all of its reactions (neighbors)
-        return self._remove_object(s, remove_neighbors=True)
+        return self._remove_objects([s], remove_neighbors=True)
+    
+    def remove_species(self, species: List[Specie]):
+        """Method to remove a specie from the reaction graph.
+        ARGS:
+            - specie (Specie): desired specie to remove
+        RETURNS:
+            (RxnGraph) a copy of the reaction graph without the speice"""
+        _species = []
+        for sp in species:
+            # putting specie in format
+            s = self._read_specie_with_ac_matrix(sp)
+            # check if specie is in graph
+            if not self.has_specie(s):
+                raise ValueError("Desired specie is not in the graph !")
+            _species.append(s)
+        # removing specie & all of its reactions (neighbors)
+        return self._remove_objects(_species, remove_neighbors=True)
+    
 
     def remove_reaction(self, reaction: Reaction):
         """Method to remove a reaction from the reaction graph.
@@ -300,7 +319,20 @@ class RxnGraph:
         if not self.has_reaction(reaction):
             raise ValueError("Desired reaction is not in the graph !")
         # removing reaction from graph
-        return self._remove_object(reaction, remove_neighbors=False)
+        return self._remove_objects([reaction], remove_neighbors=False)
+    
+    def remove_reactions(self, reactions: List[Reaction]):
+        """Method to remove a reaction from the reaction graph.
+        ARGS:
+            - reaction (Reaction): desired reaction to remove
+        RETURNS:
+            (RxnGraph) a copy of the reaction graph without the speice"""
+        for r in reactions:
+            # check if specie is in graph
+            if not self.has_reaction(r):
+                raise ValueError("Reaction {} is not in the graph !".format(r.pretty_string()))
+        # removing reaction from graph
+        return self._remove_objects(reactions, remove_neighbors=False)
 
     def join(self, rxn_graph) -> None:
         """Method to join a reaction graph into the current reaction graph.

@@ -38,6 +38,26 @@ class OnlySingleBonds (ConvFilter):
         # else:
         #     return False
         return True
+    
+class MaxFormingAndBreakingBonds (ConvFilter):
+    """Filter to limit total number of bonds breaking or forming per conversion matrix"""
+
+    def __init__(self, max_forming: int=-1, max_breaking: int=-1):
+        self.max_forming = max_forming
+        self.max_breaking = max_breaking
+
+    def check(self, matrix: np.array):
+        # calculates number of forming bonds, by canceling out the breaking bonds
+        if self.max_forming != -1:
+            n_forming = int(np.sum(np.abs(matrix) + matrix) / 2)
+        else:
+            n_forming = -1
+        # similarly calculates number of breaking bonds
+        if self.max_breaking != -1:
+            n_breaking = - int(np.sum(np.abs(matrix) - matrix) / 2)
+        else:
+            n_breaking = -1
+        return n_forming <= self.max_forming and n_breaking <= self.max_breaking
 
 class _TwoSpecieMatrix (ConvFilter):
     """Filter to make sure that only reactions between 2 species are created (to be used internaly only)"""

@@ -1,0 +1,11 @@
+SOURCE SPECIES
+[CH3]
+[H]
+[OH]
+[O]
+[CH2]
+[NH]
+[NH2]
+[N]
+[CH]
+RUNNING WITH 2 WORKERS

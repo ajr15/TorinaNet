@@ -106,7 +106,8 @@ class SimpleEnumerator (Enumerator):
                     n_iter: int,
                     results_dir: str,
                     slurm_client: SlurmClient,
-                    max_changing_bonds: int=2,
+                    max_breaking_bonds: int=2,
+                    max_forming_bonds: int=2,
                     ac_filters: Optional[List[tn.iterate.ac_matrix_filters.AcMatrixFilter]]=None,
                     slurm_config_path: Optional[str]=None,
                     program=None,
@@ -123,7 +124,8 @@ class SimpleEnumerator (Enumerator):
                     mvc_metric: str="degree",
                     reflect: bool=True):
         # parsing input kwargs
-        self.parse_inputs(max_changing_bonds,
+        self.parse_inputs(max_forming_bonds,
+                        max_breaking_bonds,
                         ac_filters,
                         slurm_config_path,
                         program,
@@ -237,7 +239,8 @@ class SimpleEnumerator (Enumerator):
         run_computations(pipeline, db_session=self.session)
 
     def parse_inputs(self,
-                        max_changing_bonds: int=2,
+                        max_forming_bonds: int=2,
+                        max_breaking_bonds: int=2,
                         ac_filters: Optional[List[tn.iterate.ac_matrix_filters.AcMatrixFilter]]=None,
                         slurm_config_path: Optional[str]=None,
                         program=None,
@@ -246,8 +249,9 @@ class SimpleEnumerator (Enumerator):
                         output_type: Optional[tx.io.FileParser]=None
                 ):
         # making conversion filters
-        self.conversion_filters = [tn.iterate.conversion_matrix_filters.MaxChangingBonds(max_changing_bonds),
-                                tn.iterate.conversion_matrix_filters.OnlySingleBonds()]
+        self.conversion_filters = [tn.iterate.conversion_matrix_filters.MaxChangingBonds(max_breaking_bonds + max_forming_bonds),
+                                    tn.iterate.conversion_matrix_filters.MaxFormingAndBreakingBonds(max_forming_bonds, max_breaking_bonds),
+                                    tn.iterate.conversion_matrix_filters.OnlySingleBonds()]
         # making default ac_matrix filters
         if not ac_filters:
             self.ac_filters = [

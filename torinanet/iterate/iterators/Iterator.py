@@ -22,7 +22,7 @@ class Iterator (ABC):
         self.dask_scheduler = dask_scheduler
 
 
-    @da.delayed(pure=False)
+    @da.delayed
     @TimeFunc
     def iterate_over_species(self, specie1, specie2, ac_filters, conversion_filters):
         """iterate over all possible reactions for 2 species"""
@@ -43,7 +43,7 @@ class Iterator (ABC):
         return res_rxn_graph
 
 
-    @da.delayed(pure=False)
+    @da.delayed
     @TimeFunc
     def iterate_over_a_specie(self, specie, ac_filters, conversion_filters):
         """iterate over all possible reactions for 2 species"""

@@ -1,0 +1,57 @@
+SOURCE SPECIES
+[CH2]CC
+[H]
+CC[CH2]
+[CH2][CH][CH2]
+[CH2][C][CH2]
+[CH3]
+[CH2]C
+[CH]
+C1CC1
+[CH][C][CH]
+[C]
+[CH]1[C][C@@H]1C
+[CH][CH][CH2]
+[CH2][C][CH]
+==============================
+         Iteration 1
+==============================
+
+
+Iterating over single specie reactions...
+1 out of 13 (7.69%). total elapsed time = 13.63 seconds
+7 out of 13 (53.85%). total elapsed time = 24.25 seconds
+13 out of 13 (53.85%). total elapsed time = 31.45 seconds
+done successfully in 31.45 seconds
+Current number of species: 122
+Current number of reactions: 341
+
+
+Iterating over old-new specie reactions...
+Current number of species: 122
+Current number of reactions: 341
+
+
+iterating new-new specie reactions
+1 out of 91 (1.1%). total elapsed time = 19.97 seconds
+7 out of 91 (7.69%). total elapsed time = 449.32 seconds
+13 out of 91 (14.29%). total elapsed time = 490.47 seconds
+19 out of 91 (20.88%). total elapsed time = 624.33 seconds
+25 out of 91 (27.47%). total elapsed time = 719.37 seconds
+28 out of 91 (30.77%). total elapsed time = 762.7 seconds
+31 out of 91 (34.07%). total elapsed time = 762.8 seconds
+37 out of 91 (40.66%). total elapsed time = 767.41 seconds
+43 out of 91 (47.25%). total elapsed time = 975.95 seconds
+49 out of 91 (53.85%). total elapsed time = 1072.31 seconds
+55 out of 91 (60.44%). total elapsed time = 1172.06 seconds
+61 out of 91 (67.03%). total elapsed time = 1213.21 seconds
+67 out of 91 (73.63%). total elapsed time = 1401.35 seconds
+73 out of 91 (80.22%). total elapsed time = 1632.73 seconds
+79 out of 91 (86.81%). total elapsed time = 1886.94 seconds
+85 out of 91 (93.41%). total elapsed time = 1891.25 seconds
+91 out of 91 (93.41%). total elapsed time = 1904.86 seconds
+done successfully in 1904.86 seconds
+Current number of species: 251
+Current number of reactions: 1775
+DONE ITERATING REACTIONS IN THIS ITERATION SUCCESSFULLY
+TOTAL TIME = 1966.2565784454346

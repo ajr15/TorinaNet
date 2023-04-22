@@ -1,0 +1,35 @@
+SOURCE SPECIES
+[CH2]CC
+[H]
+CC[CH2]
+[CH2][CH][CH2]
+[CH2][C][CH2]
+[CH3]
+[CH2]C
+[CH]
+C1CC1
+[CH][C][CH]
+[C]
+[CH]1[C][C@@H]1C
+[CH][CH][CH2]
+[CH2][C][CH]
+==============================
+         Iteration 1
+==============================
+
+
+Iterating over single specie reactions...
+Current number of species: 122
+Current number of reactions: 341
+
+
+Iterating over old-new specie reactions...
+Current number of species: 122
+Current number of reactions: 341
+
+
+iterating new-new specie reactions
+Current number of species: 251
+Current number of reactions: 1775
+DONE ITERATING REACTIONS IN THIS ITERATION SUCCESSFULLY
+TOTAL TIME = 2385.1035299301147
