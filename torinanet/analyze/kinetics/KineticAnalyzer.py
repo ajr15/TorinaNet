@@ -41,14 +41,14 @@ class KineticAnalyzer:
             if self.rxn_graph.has_specie(specie):
                 if step is None:
                     # return concentration in last step is step is not defined
-                    sid = self.rxn_graph.make_unique_id(specie)
+                    sid = self.rxn_graph.specie_collection.get_key(specie)
                     idx = self._specie_d[sid]
                     return self._concs[-1][idx]
                 if step >= len(self._concs):
                     print("WARNING: supplied step is larger than the total number of steps, returning concentration on last step")
                     step = len(self._concs) - 1
                 # returning the concentration
-                sid = self.rxn_graph.make_unique_id(specie)
+                sid = self.rxn_graph.specie_collection.get_key(specie)
                 idx = self._specie_d[sid]
                 return self._concs[step][idx]
             else:
@@ -61,7 +61,7 @@ class KineticAnalyzer:
         """Get dictionary of specie ID -> index in vector. used internally for solver"""
         d = {}
         for i, s in enumerate(rxn_graph.species):
-            sid = rxn_graph.make_unique_id(s)
+            sid = rxn_graph.specie_collection.get_key(s)
             d[sid] = i
         return d
 
@@ -73,8 +73,8 @@ class KineticAnalyzer:
         rids = []
         pids = []
         for reaction in self.rxn_graph.reactions:
-            rids.append([self._specie_d[self.rxn_graph.make_unique_id(s)] for s in reaction.reactants])
-            pids.append([self._specie_d[self.rxn_graph.make_unique_id(s)] for s in reaction.products])
+            rids.append([self._specie_d[self.rxn_graph.specie_collection.get_key(s)] for s in reaction.reactants])
+            pids.append([self._specie_d[self.rxn_graph.specie_collection.get_key(s)] for s in reaction.products])
             ks.append(reaction.properties[self.rate_constant_property])
             rate = lambda t, concs, k, ridxs: k * np.product([concs[i] for i in ridxs])
             # defining the reaction function
@@ -111,9 +111,11 @@ class KineticAnalyzer:
         self._concs = [initial_concs]
         self._ts = [0]
         while solver.successful() and t < simulation_time:
+            print("time =", t)
             t = t + timestep
             self._ts.append(t)
             self._concs.append(solver.integrate(t))
+        print("DONE")
 
     def find_max_reaction_rates(self, simulation_time: float, timestep: float, initial_concs: List[float], **solver_kwargs):
         """Solve the rate equations at given conditions and follow only the maximal reaction rates.
@@ -134,14 +136,14 @@ class KineticAnalyzer:
         t = 0
         self._concs = [initial_concs]
         self._ts = [0]
-        max_rates = {self.rxn_graph.make_unique_id(rxn): self.get_rate(rxn) for rxn in self.rxn_graph.reactions}
+        max_rates = {self.rxn_graph.specie_collection.get_key(rxn): self.get_rate(rxn) for rxn in self.rxn_graph.reactions}
         while solver.successful() and t < simulation_time:
             t = t + timestep
             self._ts[0] = t
             self._concs[0] = solver.integrate(t)
             print("time =", t)
             for rxn in self.rxn_graph.reactions:
-                rid = self.rxn_graph.make_unique_id(rxn)
+                rid = self.rxn_graph.specie_collection.get_key(rxn)
                 rate = self.get_rate(rxn)
                 if rate > max_rates[rid]:
                     max_rates[rid] = rate

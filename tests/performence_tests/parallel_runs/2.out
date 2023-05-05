@@ -1,0 +1,97 @@
+SOURCE SPECIES
+[CH3]
+[H]
+[CH2]
+C[CH2]
+[CH]
+[CH2][CH2]
+[C]
+[CH2][CH]
+[CH][CH]
+C[C]
+[CH][C]
+[CH][CH][CH]
+[CH2][C]
+[C][CH2]
+==============================
+         Iteration 1
+==============================
+
+
+enumerating single-specie reactions...
+2 done out of 13 (15.38%). total elapsed time 1.00 seconds
+13 done out of 13 (100.00%). total elapsed time 2.01 seconds
+all done in 2 seconds
+Current number of species: 31
+Current number of reactions: 101
+
+
+enumerating old-new specie reactions...
+all done in 1 seconds
+Current number of species: 31
+Current number of reactions: 101
+
+
+enumerating new-new specie reactions...
+1 done out of 91 (1.10%). total elapsed time 56.07 seconds
+2 done out of 91 (2.20%). total elapsed time 95.15 seconds
+3 done out of 91 (3.30%). total elapsed time 109.19 seconds
+4 done out of 91 (4.40%). total elapsed time 127.25 seconds
+5 done out of 91 (5.49%). total elapsed time 142.28 seconds
+6 done out of 91 (6.59%). total elapsed time 143.28 seconds
+8 done out of 91 (8.79%). total elapsed time 160.32 seconds
+9 done out of 91 (9.89%). total elapsed time 168.35 seconds
+10 done out of 91 (10.99%). total elapsed time 170.36 seconds
+11 done out of 91 (12.09%). total elapsed time 171.36 seconds
+12 done out of 91 (13.19%). total elapsed time 172.36 seconds
+13 done out of 91 (14.29%). total elapsed time 173.36 seconds
+14 done out of 91 (15.38%). total elapsed time 203.45 seconds
+15 done out of 91 (16.48%). total elapsed time 207.47 seconds
+16 done out of 91 (17.58%). total elapsed time 223.52 seconds
+17 done out of 91 (18.68%). total elapsed time 225.52 seconds
+18 done out of 91 (19.78%). total elapsed time 233.55 seconds
+19 done out of 91 (20.88%). total elapsed time 235.56 seconds
+20 done out of 91 (21.98%). total elapsed time 239.57 seconds
+21 done out of 91 (23.08%). total elapsed time 243.58 seconds
+22 done out of 91 (24.18%). total elapsed time 244.58 seconds
+24 done out of 91 (26.37%). total elapsed time 245.58 seconds
+25 done out of 91 (27.47%). total elapsed time 246.59 seconds
+26 done out of 91 (28.57%). total elapsed time 261.63 seconds
+28 done out of 91 (30.77%). total elapsed time 277.67 seconds
+29 done out of 91 (31.87%). total elapsed time 285.70 seconds
+30 done out of 91 (32.97%). total elapsed time 287.70 seconds
+31 done out of 91 (34.07%). total elapsed time 292.70 seconds
+32 done out of 91 (35.16%). total elapsed time 293.71 seconds
+34 done out of 91 (37.36%). total elapsed time 296.71 seconds
+36 done out of 91 (39.56%). total elapsed time 297.71 seconds
+37 done out of 91 (40.66%). total elapsed time 307.73 seconds
+38 done out of 91 (41.76%). total elapsed time 308.73 seconds
+39 done out of 91 (42.86%). total elapsed time 312.74 seconds
+40 done out of 91 (43.96%). total elapsed time 314.74 seconds
+41 done out of 91 (45.05%). total elapsed time 316.74 seconds
+42 done out of 91 (46.15%). total elapsed time 317.74 seconds
+43 done out of 91 (47.25%). total elapsed time 318.75 seconds
+45 done out of 91 (49.45%). total elapsed time 319.75 seconds
+46 done out of 91 (50.55%). total elapsed time 320.75 seconds
+47 done out of 91 (51.65%). total elapsed time 324.76 seconds
+48 done out of 91 (52.75%). total elapsed time 328.76 seconds
+49 done out of 91 (53.85%). total elapsed time 330.77 seconds
+50 done out of 91 (54.95%). total elapsed time 332.77 seconds
+51 done out of 91 (56.04%). total elapsed time 333.77 seconds
+53 done out of 91 (58.24%). total elapsed time 334.78 seconds
+55 done out of 91 (60.44%). total elapsed time 335.78 seconds
+57 done out of 91 (62.64%). total elapsed time 337.78 seconds
+58 done out of 91 (63.74%). total elapsed time 338.78 seconds
+63 done out of 91 (69.23%). total elapsed time 339.79 seconds
+64 done out of 91 (70.33%). total elapsed time 342.79 seconds
+66 done out of 91 (72.53%). total elapsed time 343.79 seconds
+70 done out of 91 (76.92%). total elapsed time 344.79 seconds
+71 done out of 91 (78.02%). total elapsed time 346.80 seconds
+74 done out of 91 (81.32%). total elapsed time 347.80 seconds
+81 done out of 91 (89.01%). total elapsed time 348.80 seconds
+91 done out of 91 (100.00%). total elapsed time 349.80 seconds
+all done in 350 seconds
+Current number of species: 246
+Current number of reactions: 2555
+DONE ITERATING REACTIONS IN THIS ITERATION SUCCESSFULLY
+TOTAL TIME = 387.271311044693

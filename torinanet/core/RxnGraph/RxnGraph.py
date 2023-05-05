@@ -267,9 +267,10 @@ class RxnGraph:
         # convert to networkx graph
         network = self.to_networkx_graph(use_internal_id=True)
         # finding nodes to remove
-        nodes_to_remove = nodes
-        if remove_neighbors:
-            for node in nodes:
+        nodes_to_remove = []
+        for node in nodes:
+            nodes_to_remove.append(node)
+            if remove_neighbors:
                 nodes_to_remove += nx.all_neighbors(network, node)
         # removing nodes
         network.remove_nodes_from(nodes_to_remove)
@@ -297,6 +298,8 @@ class RxnGraph:
             - specie (Specie): desired specie to remove
         RETURNS:
             (RxnGraph) a copy of the reaction graph without the speice"""
+        if len(species) == 0:
+            return self
         _species = []
         for sp in species:
             # putting specie in format
@@ -327,6 +330,8 @@ class RxnGraph:
             - reaction (Reaction): desired reaction to remove
         RETURNS:
             (RxnGraph) a copy of the reaction graph without the speice"""
+        if len(reactions) == 0:
+            return self
         for r in reactions:
             # check if specie is in graph
             if not self.has_reaction(r):

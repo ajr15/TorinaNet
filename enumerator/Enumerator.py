@@ -115,9 +115,14 @@ class SimpleEnumerator (Enumerator):
                     input_type: Optional[tx.io.FileParser]=None,
                     output_type: Optional[tx.io.FileParser]=None,
                     reaction_energy_th: float=0.064, # Ha = 40 kcal/mol
-                    min_atomic_energy: Optional[float]=None, 
                     use_shortest_path: bool=True,
                     sp_energy_th: float=0.096, # Ha = 60 kcal/mol
+                    max_leaf_in_degree: int=5,
+                    leaf_reaction_energy_th: float=0.064, # Ha = 40 kcal/mol
+                    leaf_use_shortest_path: bool=True,
+                    leaf_sp_energy_th: float=0.096, # Ha = 60 kcal/mol
+                    leaf_reducer_after: int=2, # iteration after which to apply the leaf reducer
+                    min_atomic_energy: Optional[float]=None, 
                     use_mvc: bool=True,
                     max_mvc_samples: int=300,
                     n_mvc_trails: int=5,
@@ -173,7 +178,14 @@ class SimpleEnumerator (Enumerator):
                 tn.analyze.network_reduction.EnergyReduction.SimpleEnergyReduction(reaction_energy_th,
                                                                                 use_shortest_path,
                                                                                 sp_energy_th),
-                "energy_reduced_graph.rxn")]
+                "energy_reduced_graph.rxn"),
+            comps.ReduceGraphByEnergyReducer(
+                tn.analyze.network_reduction.EnergyReduction.LeafEnergyReducer(max_leaf_in_degree, 
+                                                                               leaf_reaction_energy_th,
+                                                                               leaf_use_shortest_path,
+                                                                               leaf_sp_energy_th),
+                "leaf_energy_reduced_graph.rxn",
+                apply_after_iter=leaf_reducer_after)]
         super().__init__(rxn_graph, pipeline, n_iter, results_dir, reflect)
 
     @staticmethod

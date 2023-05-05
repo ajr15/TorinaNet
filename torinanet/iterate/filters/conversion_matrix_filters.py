@@ -49,12 +49,12 @@ class MaxFormingAndBreakingBonds (ConvFilter):
     def check(self, matrix: np.array):
         # calculates number of forming bonds, by canceling out the breaking bonds
         if self.max_forming != -1:
-            n_forming = int(np.sum(np.abs(matrix) + matrix) / 2)
+            n_forming = int(np.sum(np.abs(matrix) + matrix) / 4)
         else:
             n_forming = -1
         # similarly calculates number of breaking bonds
         if self.max_breaking != -1:
-            n_breaking = - int(np.sum(np.abs(matrix) - matrix) / 2)
+            n_breaking = int(np.sum(np.abs(matrix) - matrix) / 4)
         else:
             n_breaking = -1
         return n_forming <= self.max_forming and n_breaking <= self.max_breaking

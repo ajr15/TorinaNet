@@ -22,8 +22,7 @@ class ReadSpeciesFromGraph (Computation):
     """Computation to create main specie table in Database and read it from uncharged ReactionGraph object.
     ARGS:
         - specie_hash_func (Callable[[tn.core.Specie], int]): hash function for a specie"""
-
-    base_specie_hash_func = tn.core.HashedCollection.generator_to_hash(tn.core.HashedCollection.FingerprintGenerators.RDKIT, fp_size=256, n_bits_per_feature=4)
+    base_specie_hash_func = tn.core.HashedCollection.RdkitFingerprintGenerator(tn.core.HashedCollection.FingerprintAlgorithms.RDKIT, 256, 4)
     tablename = "species"
     name = "read_species_from_graph"
     __results_columns__ = {
@@ -315,13 +314,18 @@ class ReduceGraphByCriterion (Computation):
         print("n species =", rxn_graph.get_n_species())
         print("n reactions =", rxn_graph.get_n_reactions())
         # finding specie IDs to remove
-        smiles_strs = self.specie_query_func(db_session)
-        # removing IDs from graph
-        for smiles in smiles_strs:
-            print("removing", smiles)
+        species = []
+        for smiles in self.specie_query_func(db_session):
             s = tn.core.Specie(smiles)
             if rxn_graph.has_specie(s):
-                rxn_graph = rxn_graph.remove_specie(s)
+                species.append(s)
+        rxn_graph = rxn_graph.remove_species(species)
+        # # removing IDs from graph
+        # for smiles in smiles_strs:
+        #     print("removing", smiles)
+        #     s = tn.core.Specie(smiles)
+        #     if rxn_graph.has_specie(s):
+        #         rxn_graph = rxn_graph.remove_specie(s)
         # saving reduced graph
         rxn_graph.save(rxn_graph_path)
         print("AFTER REDUCTION")
@@ -344,10 +348,11 @@ class ReduceGraphByEnergyReducer (Computation):
     name = "graph_energy_reduction"
     tablename = None
     
-    def __init__(self, reducer, local_file_name: Optional[str]=None, use_atomization_energies: bool=False) -> None:
+    def __init__(self, reducer, local_file_name: Optional[str]=None, use_atomization_energies: bool=False, apply_after_iter: int=0) -> None:
         self.reducer = reducer
         self.local_file_name = local_file_name
         self.use_atomization_energies = use_atomization_energies
+        self.apply_after_iter = apply_after_iter
         self.update_species_comp = ReadSpeciesFromGraph()
         super().__init__()
 
@@ -383,6 +388,10 @@ class ReduceGraphByEnergyReducer (Computation):
         return rxn_graph
 
     def execute(self, db_session) -> List[SqlBase]:
+        # check if iteration is appropriate
+        iter_count = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="macro_iteration").one()[0]
+        if int(iter_count) < self.apply_after_iter:
+            return []
         # reading reaction graph path
         rxn_graph_path = db_session.query(model_lookup_by_table_name("config").value).filter_by(name="rxn_graph_path").one()[0]
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
@@ -428,7 +437,7 @@ class ElementaryReactionEnumeration (Computation):
         rxn_graph = tn.core.RxnGraph.from_file(rxn_graph_path)
         # setting up & enumerating
         stop_cond = tn.iterate.stop_conditions.MaxIterNumber(1)
-        iterator = tn.iterate.Iterator(rxn_graph, dask_scheduler="synchronous")
+        iterator = tn.iterate.Iterator(rxn_graph)
         rxn_graph = iterator.enumerate_reactions(self.conversion_filters, 
                                                     self.ac_filters, 
                                                     stop_cond, 

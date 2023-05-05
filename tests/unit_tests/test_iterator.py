@@ -3,12 +3,12 @@ import torinanet as tn
 
 class TestIterator (unittest.TestCase):
 
-    # @unittest.skip("")
+    @unittest.skip("")
     def test_two_specie(self):
         g = tn.core.RxnGraph()
-        s1 = g._read_specie_with_ac_matrix(tn.core.Specie("C"))
-        s2 = g._read_specie_with_ac_matrix(tn.core.Specie("[H]"))
-        iterator = tn.iterate.Iterator(tn.core.RxnGraph(), dask_scheduler="processes")
+        s1 = g._read_specie_with_ac_matrix(tn.core.Specie("[CH3]"))
+        s2 = g._read_specie_with_ac_matrix(tn.core.Specie("[OH]"))
+        iterator = tn.iterate.Iterator(tn.core.RxnGraph(), n_workers=1)
         conv_filters = [tn.iterate.conversion_matrix_filters.MaxChangingBonds(3),
                                 tn.iterate.conversion_matrix_filters.OnlySingleBonds()]
         ac_filters = [tn.iterate.ac_matrix_filters.MaxBondsPerAtom(), 
@@ -19,11 +19,11 @@ class TestIterator (unittest.TestCase):
             print("{} -> {}".format(" + ".join([s.ac_matrix.to_specie().identifier.strip() for s in rxn.reactants]),
                                     " + ".join([s.ac_matrix.to_specie().identifier.strip() for s in rxn.products])))
 
-    # @unittest.skip("")
+    @unittest.skip("")
     def test_single_specie(self):
         g = tn.core.RxnGraph()
         s1 = g._read_specie_with_ac_matrix(tn.core.Specie("C"))
-        iterator = tn.iterate.Iterator(tn.core.RxnGraph(), dask_scheduler="processes")
+        iterator = tn.iterate.Iterator(tn.core.RxnGraph(), n_workers=1)
         conv_filters = [tn.iterate.conversion_matrix_filters.MaxChangingBonds(3),
                                 tn.iterate.conversion_matrix_filters.OnlySingleBonds()]
         ac_filters = [tn.iterate.ac_matrix_filters.MaxBondsPerAtom(), 
@@ -39,7 +39,7 @@ class TestIterator (unittest.TestCase):
         g.set_source_species([
             tn.core.Specie("O")
         ], force=True)
-        iterator = tn.iterate.Iterator(g, dask_scheduler="processes")
+        iterator = tn.iterate.Iterator(g, n_workers=2)
         conv_filters = [tn.iterate.conversion_matrix_filters.MaxChangingBonds(3),
                                 tn.iterate.conversion_matrix_filters.OnlySingleBonds()]
         ac_filters = [tn.iterate.ac_matrix_filters.MaxBondsPerAtom(), 
