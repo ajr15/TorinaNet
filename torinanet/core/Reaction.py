@@ -88,6 +88,12 @@ class Reaction:
             return sum([s.charge for s in self.reactants])
         else:
             raise RuntimeError("Cannot set reaction charge if species do not have charges")
+        
+    def energy(self):
+        if not all("energy" in s.properties for s in self.reactants + self.products):
+            raise RuntimeError("Cannot calculate reaction energy if some species do not have calcualted energies")
+        return sum([s.properties["energy"] for s in self.products]) - sum([s.properties["energy"] for s in self.reactants])
+
 
     def pretty_string(self) -> str:
         """Write reaction in a 'pretty' conventional format"""

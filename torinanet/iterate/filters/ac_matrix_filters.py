@@ -69,9 +69,23 @@ class MaxAtomsOfElement (AcMatrixFilter):
 
     def check(self, ac_matrix) -> bool:
         for ac in ac_matrix.get_compoenents():
-            if not self.check_mat(ac_matrix):
+            if not self.check_mat(ac):
                 return False
         return True
+    
+class MaxHeavyAtoms (AcMatrixFilter):
+    """Filter to limit the number of atoms of a specific element (for example carbon) in the ac_matrix.
+    the filter takes """
+
+    def __init__(self, max_heavy_atoms: dict) -> None:
+        self.max_heavy_atoms = max_heavy_atoms
+
+    def check(self, ac_matrix) -> bool:
+        for ac in ac_matrix.get_compoenents():
+            if len([i for i in ac.get_atoms() if i > 1]) > self.max_heavy_atoms:
+                return False
+        return True
+
 
 class MaxComponents (AcMatrixFilter):
 

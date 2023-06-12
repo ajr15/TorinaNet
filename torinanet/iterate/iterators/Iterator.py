@@ -132,7 +132,7 @@ class Iterator (ABC):
                 # new species and new species
                 ajr = []
                 for i in range(len(new_species)):
-                    for j in range(i, len(new_species)): 
+                    for j in range(i, len(new_species)):
                         r = pool.apply_async(self.iterate_over_species, (self.rxn_graph, new_species[i], new_species[j], ac_filters, conversion_filters))
                         ajr.append(r)
                 self._assync_progress_listener(ajr, verbose)
