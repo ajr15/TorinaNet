@@ -272,7 +272,7 @@ class ReadCompOutput (Computation):
 
     def execute(self, db_session):
         # getting all species for reading
-        species = db_session.query(self.sql_model).filter(self.sql_model.comp_output.isnot(None) & self.sql_model.energy.is_(None)).all()
+        species = db_session.query(self.sql_model).filter(self.sql_model.comp_output.isnot(None) & self.sql_model.energy.is_(None) & self.sql_model.successful.is_(None)).all()
         # making list of futures for calculation
         futures = []
         for specie in species:

@@ -26,7 +26,7 @@ class MaxBondsPerAtom (AcMatrixFilter):
         if not max_bonds_dict is None:
             self.max_bonds_dict = max_bonds_dict
         else:
-            self.max_bonds_dict = {1: 1, 6: 4, 7: 4, 8: 2, 9: 1}
+            self.max_bonds_dict = {1: 1, 6: 4, 7: 3, 8: 2, 9: 1}
         # setting list of dative atoms
         if not dative_atoms is None:
             self.dative_atoms = dative_atoms
