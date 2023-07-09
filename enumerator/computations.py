@@ -209,7 +209,7 @@ class ExternalCalculation (SlurmComputation):
         # adding log computations to properly add calculated species to log 
         # ALL relevant species should be in the log
         smiles = [s[0] for s in db_session.execute("SELECT smiles FROM species WHERE relevant == 1 AND NOT smiles IN (SELECT id FROM log)")]
-        for smile in smiles:
+        for smile in list(set(smiles)):
             entries.append(self.comp_log_sql(id=smile, iteration=iter_count, source=self.comp_source))
         db_session.commit()
         return entries, cmds
