@@ -62,16 +62,21 @@ class SimpleKineticsReduction:
 
 class MolRankReduction:
 
-    def __init__(self, min_shell_fraction: float, 
+    def __init__(self, rank_th: float, 
                         rate_constant_property: str, 
                         estimate_max_constants: bool,
+                        target: str="species",
                         temperature: float=298,
                         activation_energy_scaling_factor: float=30,
                         energy_conversion_factor: float=4.359744e-18, 
                         specie_energy_property_name: str="energy"):
-        self.min_shell_fraction = min_shell_fraction
+        self.rank_th = rank_th
         self.rate_constant_property = rate_constant_property
         self.estimate_max_constants = estimate_max_constants
+        if target.lower() in ["species", "reactions"]:
+            self.target = target.lower()
+        else:
+            raise ValueError("Unknown target {}. allowed targets are 'reacitons' or 'species'".format(target))
         self.temperature = temperature
         self.energy_conversion_factor = energy_conversion_factor / activation_energy_scaling_factor
         self.specie_energy_property_name = specie_energy_property_name
@@ -93,7 +98,7 @@ class MolRankReduction:
         else:
             return g.nodes[rxn]["rate"] / g.nodes[sp]["total_rate"]
 
-    def rank_species(self, rxn_graph: RxnGraph):
+    def rank_species(self, rxn_graph: RxnGraph, return_network: bool=False):
         """Method to calculate the PageRank metric of a specie"""
         # initializing - converting to networkx graph 
         g = rxn_graph.to_networkx_graph(use_internal_id=True)
@@ -133,11 +138,24 @@ class MolRankReduction:
                 ajr.loc[sp, "p"] = val
             # now putting nseed as seed
             seed = list(nseed)
+        if return_network:
+            return g
+        else:
+            return ajr
+        
+    def rank_reactions(self, rxn_graph: RxnGraph):
+        # we need to run the full MolRank on species to get the graph with all the estimated rates etc. this is the easiest way to do it NOT THE BEST
+        g = self.rank_species(rxn_graph, return_network=True)
+        # initializing rank dataframe
+        ajr = pd.DataFrame({"p": np.zeros(rxn_graph.get_n_reactions()), "rxn": rxn_graph.reactions}, index=list(rxn_graph.reaction_collection.keys()))
+        for rxn in ajr.index:
+            # assigning maximal rate fraction for each reaction as its score
+            fracs = [self._calc_rate_fraction(g, rxn, sp) for sp in g.predecessors(rxn)]
+            ajr.loc[rxn, "p"] = max(fracs)
         return ajr
 
-    def apply(self, rxn_graph: RxnGraph) -> RxnGraph:
-        if self.estimate_max_constants:
-            rxn_graph = assign_maximal_rate_constants(rxn_graph, self.temperature, self.energy_conversion_factor, self.specie_energy_property_name, self.rate_constant_property)
+
+    def apply_species(self, rxn_graph: RxnGraph) -> RxnGraph:
         # ranking all species
         df = self.rank_species(rxn_graph)
         # getting distances
@@ -146,6 +164,22 @@ class MolRankReduction:
         # calculating "shell normalized" MolRank
         df["rank"] = [p / sum(df[df["dist"] == dist]["p"].values) for p, dist in df[["p", "dist"]].values]
         # removing all species with rank < th
-        species = df[df["rank"] < self.min_shell_fraction]["specie"].values
+        species = df[df["rank"] < self.rank_th]["specie"].values
         res = rxn_graph.remove_species(species)
         return res
+
+    def apply_reactions(self, rxn_graph: RxnGraph) -> RxnGraph:
+        # ranking all species
+        df = self.rank_reactions(rxn_graph)
+        # removing all reactions with rank < th
+        rxns = df[df["p"] < self.rank_th]["rxn"].values
+        res = rxn_graph.remove_reactions(rxns)
+        return res
+
+    def apply(self, rxn_graph: RxnGraph) -> RxnGraph:
+        if self.estimate_max_constants:
+            rxn_graph = assign_maximal_rate_constants(rxn_graph, self.temperature, self.energy_conversion_factor, self.specie_energy_property_name, self.rate_constant_property)
+        if self.target == "species":
+            return self.apply_species(rxn_graph)
+        else:
+            return self.apply_reactions(rxn_graph)
