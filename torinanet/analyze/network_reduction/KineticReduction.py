@@ -146,7 +146,7 @@ class MolRankReduction:
     def rank_reactions(self, rxn_graph: RxnGraph):
         # get the maximal distance from source as number of iterations for MolRank
         analyzer = ShortestPathAnalyzer(rxn_graph, prop_func=lambda rxn: 1)
-        n_iterations = max(analyzer.shortest_path_table["dist"].values)
+        n_iterations = int(max(analyzer.shortest_path_table["dist"].values))
         # initializing - converting to networkx graph 
         g = rxn_graph.to_networkx_graph(use_internal_id=True)
         # initializing rank dataframe
@@ -161,7 +161,7 @@ class MolRankReduction:
         for _ in range(n_iterations):
             # calculating rate of all reactions (cosidering new MolRank-Specie scores)
             for rxn in rxn_graph.reaction_collection.keys():
-                g.nodes[rxn]["rate"] = np.prod([ajr.loc[s,"p"] for s in g.predecessors(rxn)]) * g.nodes[rxn]["obj"].properties["k"]
+                g.nodes[rxn]["rate"] = np.prod([g.nodes[s]["p"] for s in g.predecessors(rxn)]) * g.nodes[rxn]["obj"].properties["k"]
             # assigning total rates for seed species - needs to be after reaction rate estimation
             for sp in rxn_graph.specie_collection.keys():
                 g.nodes[sp]["total_rate"] = self._calc_total_out_rate(g, sp)
@@ -201,7 +201,7 @@ class MolRankReduction:
         # calculating relevence, if reaction was relevent before or is relevent according to criteria
         df["relevence"] = df["past_relevence"] | (df["p"] >= self.rank_th)
         # updating reactions with relevence info
-        for rxn, relevant in df[["rxn", "relevence"]]:
+        for rxn, relevant in df[["rxn", "relevence"]].values:
             rxn.properties["molrank_reaction_relevence"] = relevant
         # removing all reactions with rank < th
         rxns = df[df["relevence"] == False]["rxn"].values
