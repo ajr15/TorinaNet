@@ -144,14 +144,38 @@ class MolRankReduction:
             return ajr
         
     def rank_reactions(self, rxn_graph: RxnGraph):
-        # we need to run the full MolRank on species to get the graph with all the estimated rates etc. this is the easiest way to do it NOT THE BEST
-        g = self.rank_species(rxn_graph, return_network=True)
+        # get the maximal distance from source as number of iterations for MolRank
+        analyzer = ShortestPathAnalyzer(rxn_graph, prop_func=lambda rxn: 1)
+        n_iterations = max(analyzer.shortest_path_table["dist"].values)
+        # initializing - converting to networkx graph 
+        g = rxn_graph.to_networkx_graph(use_internal_id=True)
         # initializing rank dataframe
         ajr = pd.DataFrame({"p": np.zeros(rxn_graph.get_n_reactions()), "rxn": rxn_graph.reactions}, index=list(rxn_graph.reaction_collection.keys()))
-        for rxn in ajr.index:
-            # assigning maximal rate fraction for each reaction as its score
-            fracs = [self._calc_rate_fraction(g, rxn, sp) for sp in g.predecessors(rxn)]
-            ajr.loc[rxn, "p"] = max(fracs)
+        # setting the rank of all species to 0 and source species to 1
+        for sp in rxn_graph.specie_collection.keys():
+            g.nodes[sp]["p"] = 0
+        for sp in rxn_graph.source_species:
+            key = rxn_graph.specie_collection.get_key(sp)
+            g.nodes[key]["p"] = 1
+        # now starting the MolRank iterations
+        for _ in range(n_iterations):
+            # calculating rate of all reactions (cosidering new MolRank-Specie scores)
+            for rxn in rxn_graph.reaction_collection.keys():
+                g.nodes[rxn]["rate"] = np.prod([ajr.loc[s,"p"] for s in g.predecessors(rxn)]) * g.nodes[rxn]["obj"].properties["k"]
+            # assigning total rates for seed species - needs to be after reaction rate estimation
+            for sp in rxn_graph.specie_collection.keys():
+                g.nodes[sp]["total_rate"] = self._calc_total_out_rate(g, sp)
+            # MAIN PART: assigning MolRank ranks for species
+            for sp in rxn_graph.specie_collection.keys():
+                val = 0
+                for rxn in g.predecessors(sp):
+                    # taking the product of probability transitions
+                    val += np.prod([self._calc_rate_fraction(g, rxn, sp) for sp in g.predecessors(rxn)])
+                # the outcome of the influxes is the rank
+                g.nodes[sp]["p"] = val
+            # after specie ranking, we can rank the reactions
+            for rxn in rxn_graph.reaction_collection.keys():
+                ajr.loc[rxn, "p"] = max([self._calc_rate_fraction(g, rxn, sp) for sp in g.predecessors(rxn)])
         return ajr
 
 
@@ -171,8 +195,16 @@ class MolRankReduction:
     def apply_reactions(self, rxn_graph: RxnGraph) -> RxnGraph:
         # ranking all species
         df = self.rank_reactions(rxn_graph)
+        # adding relevance values
+        past_relevance_criteria = lambda rxn: "molrank_reaction_relevence" in rxn.properties and not pd.isna(rxn.properties["molrank_reaction_relevence"])
+        df["past_relevence"] = [past_relevance_criteria(rxn) for rxn in df["rxn"].values]
+        # calculating relevence, if reaction was relevent before or is relevent according to criteria
+        df["relevence"] = df["past_relevence"] | (df["p"] >= self.rank_th)
+        # updating reactions with relevence info
+        for rxn, relevant in df[["rxn", "relevence"]]:
+            rxn.properties["molrank_reaction_relevence"] = relevant
         # removing all reactions with rank < th
-        rxns = df[df["p"] < self.rank_th]["rxn"].values
+        rxns = df[df["relevence"] == False]["rxn"].values
         res = rxn_graph.remove_reactions(rxns)
         return res
 
