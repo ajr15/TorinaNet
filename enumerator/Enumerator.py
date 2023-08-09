@@ -122,7 +122,7 @@ class SimpleEnumerator (Enumerator):
                     molrank_temperature: float=298, # Ha = 40 kcal/mol
                     molrank_energy_scaling_factor: float=30,
                     molrank_energy_conversion_factor: float=4.359744e-18, # Ha to J (must convert to J)
-                    molrank_reducer_after: int=2, # iteration after which to apply the leaf reducer
+                    molrank_reducer_after: int=0, # iteration after which to apply the leaf reducer
                     min_atomic_energy: Optional[float]=None, 
                     use_mvc: bool=False,
                     max_mvc_samples: int=300,
