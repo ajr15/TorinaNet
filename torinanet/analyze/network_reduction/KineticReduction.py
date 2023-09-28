@@ -139,6 +139,9 @@ class MolRankReduction:
             # now putting nseed as seed
             seed = list(nseed)
         if return_network:
+            # adding "p" information to the graph 
+            for sp in ajr.index:
+                g.nodes[sp]["p"] = ajr.loc[sp, "p"]
             return g
         else:
             return ajr
