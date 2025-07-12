@@ -348,7 +348,7 @@ class RxnGraph:
 
     def _make_specie_df(self) -> pd.DataFrame:
         """Method to convert all specie data into a pd.DataFrame object. to be used for saving / reading reaction graph files"""
-        res = pd.DataFrame()
+        res = []
         for i, s in enumerate(self.species):
             d = dict()
             d["idx"] = i
@@ -357,13 +357,14 @@ class RxnGraph:
             d["identifier"] = s.identifier
             d["charge"] = s.charge
             d.update(s.properties)
-            res = res.append(d, ignore_index=True)
+            res.append(d)
+        res = pd.DataFrame(res)
         res = res.set_index("sid")
         return res
 
     def _make_reactions_df(self, species_df) -> pd.DataFrame:
         """Method to convert all reaction information into pd.DataFrame object. to be used for saving / reading reaction graph files"""
-        res = pd.DataFrame()
+        res = []
         find_sp_idx = lambda sp: str(int(species_df.loc[self.specie_collection.get_key(sp), "idx"]))
         for r in self.reactions:
             d = {}
@@ -372,7 +373,8 @@ class RxnGraph:
                     "=" + \
                     ",".join([find_sp_idx(sp) for sp in r.products])
             d["r_str"] = st
-            res = res.append(d, ignore_index=True)
+            res.append(d)
+        res = pd.DataFrame(res)
         if len(list(self.reactions)) > 0:
             res = res.set_index("r_str")
         return res

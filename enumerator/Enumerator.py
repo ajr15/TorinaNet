@@ -117,6 +117,13 @@ class SimpleEnumerator (Enumerator):
                     reaction_energy_th: float=0.064, # Ha = 40 kcal/mol
                     use_shortest_path: bool=True,
                     sp_energy_th: float=0.096, # Ha = 60 kcal/mol
+                    use_leaf_removal: bool=False,
+                    leaf_removal_after: int=2,
+                    leaf_max_in_degree: int=10,
+                    leaf_reaction_energy_th: float=0.016, # Ha = 10 kcal/mol
+                    leaf_use_shortest_path: bool=True,
+                    leaf_sp_energy_th: float=0.024, # Ha = 15 kcal/mol
+                    use_molrank: bool=True,
                     molrank_specie_th: float=0.01,
                     molrank_reactions_th: float=1e-3,
                     molrank_temperature: float=298, # Ha = 40 kcal/mol
@@ -179,27 +186,42 @@ class SimpleEnumerator (Enumerator):
                 tn.analyze.network_reduction.EnergyReduction.SimpleEnergyReduction(reaction_energy_th,
                                                                                 use_shortest_path,
                                                                                 sp_energy_th),
-                "energy_reduced_graph.rxn"),
-            comps.ReduceGraphByEnergyReducer(
-                tn.analyze.network_reduction.KineticReduction.MolRankReduction(rank_th=molrank_specie_th, 
-                                                                                target="species",
-                                                                                rate_constant_property="k", 
-                                                                                estimate_max_constants=True,
-                                                                                temperature=molrank_temperature,
-                                                                                activation_energy_scaling_factor=molrank_energy_scaling_factor,
-                                                                                energy_conversion_factor=molrank_energy_conversion_factor),
-                "molrank_species_reduced_graph.rxn",
-                apply_after_iter=molrank_reducer_after),
-            comps.ReduceGraphByEnergyReducer(
-                tn.analyze.network_reduction.KineticReduction.MolRankReduction(rank_th=molrank_reactions_th, 
-                                                                                target="reactions",
-                                                                                rate_constant_property="k", 
-                                                                                estimate_max_constants=True,
-                                                                                temperature=molrank_temperature,
-                                                                                activation_energy_scaling_factor=molrank_energy_scaling_factor,
-                                                                                energy_conversion_factor=molrank_energy_conversion_factor),
-                "molrank_reactions_reduced_graph.rxn",
-                apply_after_iter=molrank_reducer_after)]
+                "energy_reduced_graph.rxn")
+            ]
+        if use_leaf_removal:
+            pipeline += [
+                comps.ReduceGraphByEnergyReducer(
+                    tn.analyze.network_reduction.EnergyReduction.LeafEnergyReducer(
+                        min_in_degree=leaf_max_in_degree,
+                        reaction_energy_th=leaf_reaction_energy_th,
+                        use_shortest_paths=leaf_use_shortest_path,
+                        sp_energy_th=leaf_sp_energy_th
+                    ),
+                    "leaf_energy_reduced_graph.rxn",
+                    apply_after_iter=leaf_removal_after)]
+        if use_molrank:
+            pipeline += [
+                comps.ReduceGraphByEnergyReducer(
+                    tn.analyze.network_reduction.KineticReduction.MolRankReduction(rank_th=molrank_specie_th, 
+                                                                                    target="species",
+                                                                                    rate_constant_property="k", 
+                                                                                    estimate_max_constants=True,
+                                                                                    temperature=molrank_temperature,
+                                                                                    activation_energy_scaling_factor=molrank_energy_scaling_factor,
+                                                                                    energy_conversion_factor=molrank_energy_conversion_factor),
+                    "molrank_species_reduced_graph.rxn",
+                    apply_after_iter=molrank_reducer_after),
+                comps.ReduceGraphByEnergyReducer(
+                    tn.analyze.network_reduction.KineticReduction.MolRankReduction(rank_th=molrank_reactions_th, 
+                                                                                    target="reactions",
+                                                                                    rate_constant_property="k", 
+                                                                                    estimate_max_constants=True,
+                                                                                    temperature=molrank_temperature,
+                                                                                    activation_energy_scaling_factor=molrank_energy_scaling_factor,
+                                                                                    energy_conversion_factor=molrank_energy_conversion_factor),
+                    "molrank_reactions_reduced_graph.rxn",
+                    apply_after_iter=molrank_reducer_after)
+                ]
         super().__init__(rxn_graph, pipeline, n_iter, results_dir, reflect)
 
     @staticmethod
