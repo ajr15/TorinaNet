@@ -393,37 +393,47 @@ class RxnGraph:
         # saving source specie unique IDs in a temp file
         with open(path_basename + "_params", "wb") as f:
             d = {"params": self.to_dict()}
-            if self.source_species is not None:
-                d["source_species_idxs"] = [int(specie_df.loc[self.specie_collection.get_key(sp), "idx"]) for sp in self.source_species]
-            else:
-                d["source_species_idxs"] = []
             d["class"] = self.__class__
             pickle.dump(d, f)
+        # saving the source specie idxs in a temp file
+        with open(path_basename + "_source_species", "w") as f:
+            if self.source_species is not None:
+                idxs = [str(int(specie_df.loc[self.specie_collection.get_key(sp), "idx"])) for sp in self.source_species]
+            else:
+                idxs = []
+            f.write("\n".join(idxs))
         # saving reaction graph as archive file
         with ZipFile(path, "w") as f:
             f.write(path_basename + "_species")
             f.write(path_basename + "_reactions")
             f.write(path_basename + "_params")
+            f.write(path_basename + "_source_species")
         # removing temporary files
         os.remove(path_basename + "_species")
         os.remove(path_basename + "_reactions")
         os.remove(path_basename + "_params")
+        os.remove(path_basename + "_source_species")
 
 
     @classmethod
-    def from_file(cls, path):
+    def from_file(cls, path, classargs=None):
         """Load reaction graph data from file.
         ARGS:
             - path (str): path to the reaction graph file
+            - classargs (dict): Optionally give the class args for instantiation (avoids using pickle)
         RETURNS:
             (RxnGraph) reaction graph object"""
         with ZipFile(path, "r") as zipfile:
             # init
             path_basename = "rxn_graph"
             # setting graph with proper charge reading
-            with zipfile.open(path_basename + "_params") as f:
-                d = pickle.load(f)
-                rxn_graph = d["class"](**d["params"])
+            pickle_args = None # optional pickled args
+            if classargs is None:
+                with zipfile.open(path_basename + "_params") as f:
+                    pickle_args = pickle.load(f)
+                    rxn_graph = pickle_args["class"](**pickle_args["params"])
+            else:
+                rxn_graph = cls(**classargs)
             # reading specie csv from zip to pd.DataFrame
             species_df = pd.read_csv(zipfile.open(path_basename + "_species"))
             source_sps = []
@@ -443,7 +453,18 @@ class RxnGraph:
             # collecting all species
             species = list(rxn_graph.species)
             # setting source species
-            rxn_graph.set_source_species([species[i] for i in d["source_species_idxs"]], force=True)
+            if path_basename + "_source_species" in zipfile.namelist():
+                with zipfile.open(path_basename + "_source_species") as f:
+                    source_sps = [int(s) for s in f.readlines()]
+            else:
+                if pickle_args is None:
+                    raise RuntimeError("Cannot find any information on source species. try to run reader with pickle (legacy)")
+                # trying to look for source speices infor in pickled dict - to read properly legacy graphs
+                if "source_species_idxs" in pickle_args:
+                    source_sps = pickle_args["source_species_idxs"]
+                else:
+                    raise RuntimeError("Cannot find any information on source species anywhere... sorry")
+            rxn_graph.set_source_species([species[i] for i in source_sps], force=True)
             # reading reactions csv from zip to pd.DataFrame
             reactions_df = pd.read_csv(zipfile.open(path_basename + "_reactions"))
             for rxn_row in reactions_df.to_dict(orient="records"):
