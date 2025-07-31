@@ -158,22 +158,60 @@ class KineticAnalyzer:
     #     self._ts = sol.t
     #     self._concs = sol.y.T
 
+    def _rate_matrix(self, max_reactants: int):
+        """Trying to make a more efficient target f"""
+        nspecies = len(self._specie_d) + 1
+        nreactions = self.rxn_graph.get_n_reactions()
+        # building the selector matrix
+        Q = np.zeros((nreactions, nspecies ** max_reactants))
+        A = np.zeros((nspecies, nreactions))
+        for i, rxn in enumerate(self.rxn_graph.reactions):
+            rate_constant = rxn.properties[self.rate_constant_property]
+            # find the required selection index - the reactants product
+            rids = np.array([self._specie_d[self.rxn_graph.specie_collection.get_key(s)] + 1 for s in rxn.reactants])
+            idx = np.sum(np.array([nspecies ** x for x in range(len(rids))]) * rids)
+            Q[i, idx] = 1 # select the rids index from the concentrations vector
+            # now build the rate matrix
+            pids = [self._specie_d[self.rxn_graph.specie_collection.get_key(s)] + 1 for s in rxn.products]
+            for p in pids:
+                A[p, i] = rate_constant
+            for r in rids:
+                if r != 0:
+                    A[r, i] = - rate_constant
+        return A @ Q
+
     @staticmethod
-    def jacobian(t, concs, M):
-        # ajr = np.concatenate([[1], concs.flatten("F")]).reshape(-1, 1)
-        ajr = concs.flatten("F").reshape(-1, 1)
-        n = len(ajr)
-        I = np.eye(n)
-        kron1 = np.kron(I, ajr)
-        kron2 = np.kron(ajr, I)
-        return M @ (kron1 + kron2)
+    def kronecker_power(x, n):
+        result = x
+        for _ in range(n - 1):
+            result = np.kron(result, x)
+        return result
+
+
+    @staticmethod
+    def jacobian(t, concs, M, n):
+        d = concs.shape[0]
+        I = np.eye(d)
+        J = np.zeros((M.shape[0], d))
+
+        for i in range(n):
+            parts = []
+            for j in range(n):
+                if j == i:
+                    parts.append(I)
+                else:
+                    parts.append(concs)
+            term = parts[0]
+            for p in parts[1:]:
+                term = np.kron(term, p)
+            J += M @ term.T
+        return J
     
-    @staticmethod
-    def _target_function(t, concs, M):
+    @classmethod
+    def _target_function(cls, t, concs, M, n):
         # ajr = np.concatenate([[1], concs.flatten("F")]).reshape(-1, 1)
         ajr = concs.flatten("F").reshape(-1, 1)
-        print(M.shape, ajr.shape, np.kron(ajr, ajr).reshape(-1, 1).shape)
-        return (M @ np.kron(ajr, ajr).reshape(-1, 1)).flatten("F")
+        return (M @ cls.kronecker_power(ajr, n).reshape(-1, 1)).flatten("F")
 
 
     def solve_kinetics(self, initial_concs: List[float], ss_threshold: float=1e-10, max_t: Optional[float]=None, atol: float=1e-10, rtol: float=1e-3, method: str="BDF"):
@@ -185,14 +223,15 @@ class KineticAnalyzer:
             - **solver_kwargs: keywords for scipy.integrate.ode.set_integrator method
         RETURNS:
             None"""
+        max_reactants = np.max([len(rxn.reactants) for rxn in self.rxn_graph.reactions])
         # building target function
-        rate_mat = self._rate_matrix()
-        target_f = lambda t, concs: self._target_function(t, concs, rate_mat)
-        jac = lambda t, concs: self.jacobian(t, concs, rate_mat)
+        rate_mat = self._rate_matrix(max_reactants)
+        target_f = lambda t, concs: self._target_function(t, concs, rate_mat, max_reactants)
+        jac = lambda t, concs: self.jacobian(t, concs, rate_mat, max_reactants)
         ss_event = lambda t, y: 0 if np.abs(np.max(target_f(t, y))) < ss_threshold else 1
         ss_event.terminal = True
         if max_t is None:
-            max_t = np.max([1 / rxn.properties[self.rate_constant_property_name] for rxn in self.g.reactions()])
+            max_t = np.max([1 / rxn.properties[self.rate_constant_property] for rxn in self.rxn_graph.reactions])
         iconcs = np.array([1] + initial_concs)
         sol = solve_ivp(fun=target_f, jac=jac, t_span=(0, max_t), y0=iconcs, method=method, events=ss_event, atol=atol, rtol=rtol)
         self._ts = sol.t
