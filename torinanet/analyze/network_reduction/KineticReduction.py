@@ -103,7 +103,7 @@ class MolRankReduction:
         # initializing - converting to networkx graph 
         g = rxn_graph.to_networkx_graph(use_internal_id=True)
         # initializing the MolRank dictionary with values for each specie in graph
-        ajr = pd.DataFrame({"p": np.zeros(rxn_graph.get_n_species()), "visited": np.zeros(rxn_graph.get_n_species()), "specie": rxn_graph.species}, index=list(rxn_graph.specie_collection.keys()))
+        ajr = pd.DataFrame({"p": np.zeros(rxn_graph.get_n_species()), "visited": [False for _ in range(rxn_graph.get_n_species())], "specie": rxn_graph.species}, index=list(rxn_graph.specie_collection.keys()))
         # setting seed probabilities of 1 for all source species
         seed = [rxn_graph.specie_collection.get_key(sp) for sp  in rxn_graph.source_species]
         for key in seed:
@@ -149,7 +149,8 @@ class MolRankReduction:
     def rank_reactions(self, rxn_graph: RxnGraph):
         # get the maximal distance from source as number of iterations for MolRank
         analyzer = ShortestPathAnalyzer(rxn_graph, prop_func=lambda rxn: 1)
-        n_iterations = int(max(analyzer.shortest_path_table["dist"].values))
+        ajr = analyzer.shortest_path_table
+        n_iterations = int(max(ajr[ajr["dist"] < np.inf]["dist"].values))
         # initializing - converting to networkx graph 
         g = rxn_graph.to_networkx_graph(use_internal_id=True)
         # initializing rank dataframe
