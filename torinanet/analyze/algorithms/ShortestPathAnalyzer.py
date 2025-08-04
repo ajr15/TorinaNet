@@ -85,7 +85,7 @@ class ShortestPathAnalyzer:
         df["n_reactions"] = [len(self.get_path_to_source(s)) for s in self.shortest_path_table["specie"]]
         return df
 
-    def number_of_paths_per_specie(self) -> pd.DataFrame():
+    def number_of_paths_per_specie(self) -> pd.DataFrame:
         """Get the number of paths passing through each specie in the graph"""
         # counter dictionary with data on all species in graphs, we distinguish between "created" paths - where the specie is created in the path (in the products) or "consumed" paths - where specie is consumed in the path (in the reactants) or, "intermediate" - when it is not in the total reaction but appears in the path steps
         res = {sp.identifier: {"consumed": 0, "created": 0, "intermediate": 0} for sp in self.rxn_graph.species}

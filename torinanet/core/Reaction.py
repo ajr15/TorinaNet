@@ -97,7 +97,7 @@ class Reaction:
 
     def pretty_string(self) -> str:
         """Write reaction in a 'pretty' conventional format"""
-        return "{} = {}".format(" + ".join([str(s.identifier) for s in self.reactants]), " + ".join([str(s.identifier) for s in self.products]))
+        return "{} = {}".format(" + ".join(sorted([str(s.identifier) for s in self.reactants])), " + ".join(sorted([str(s.identifier) for s in self.products])))
 
     def __eq__(self, x):
         if not type(x) is Reaction:

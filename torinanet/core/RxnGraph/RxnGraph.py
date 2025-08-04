@@ -1,4 +1,5 @@
 from typing import List, Optional, Generator, Union, Iterable
+from itertools import chain
 import os
 import networkx as nx
 import pandas as pd
@@ -220,12 +221,33 @@ class RxnGraph:
             - sources (Iterable[str]): list of graph sources
         RETURNS:
             (Generator[Reaction]) generator of reactions directly connected to the sources. the generator can yeild the same reaction few times"""
-        for source in sources:
-            if self.specie_collection.get_key(source) in network:
-                for node in nx.algorithms.dfs_tree(network, self.specie_collection.get_key(source)).nodes:
-                    if type(network.nodes[node]["obj"]) is Reaction:
-                        yield network.nodes[node]["obj"]
-    @TimeFunc
+        # OLD dfs mechanism - ignores the "chemistry" in the reaction network
+        # for source in sources:
+        #     if self.specie_collection.get_key(source) in network:
+        #         for node in nx.algorithms.dfs_tree(network, self.specie_collection.get_key(source)).nodes:
+        #             if type(network.nodes[node]["obj"]) is Reaction:
+        #                 yield network.nodes[node]["obj"]
+        # start with "seed" of source species
+        seed = set([self.specie_collection.get_key(s) for s in sources])
+        covered = set() # to avoid repetition
+        while True:
+            nseed = set()
+            # go over all reactions involving uncovered seed species
+            for rxn in chain(*[network.successors(s) for s in seed.difference(covered)]):
+                # if the reactants of the reactions are in the seed, yeild the reactions
+                if all([s in seed for s in network.predecessors(rxn)]):
+                    yield network.nodes[rxn]["obj"]
+                    # also add its products to next layer seed
+                    nseed = nseed.union(set(network.successors(rxn)))
+            # add "seed" to covered
+            covered = covered.union(seed)
+            # add "next layer" to original seed
+            seed = seed.union(nseed)
+            # if nseed is empty - stop the loop (all graph is reached)
+            if len(nseed) == 0:
+                return
+
+    @TimeFunc       
     def new(self, reactions: Optional[Iterable[Reaction]]=None, species: Optional[Iterable[Specie]]=None):
         """Method to make a new reaction graph with same definitions as the current one. if no reactions / species are specified, returns a copy
         ARGS:
